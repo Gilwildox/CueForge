@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+/* ===========================================================================
+   CueForge — tokens de marca (Tailwind v4, config en CSS)
+   Sobreescribe los tokens "gray" y "amber" para que TODAS las clases ya
+   existentes en los componentes (bg-gray-900, text-amber-500, etc.) tomen
+   los nuevos valores automáticamente, sin tocar ningún componente.
+   =========================================================================== */
+@theme {
+  /* --- gray: escala neutra (sin tinte azul), reemplaza el gray-900 azulado
+     que traía el proyecto. Misma curva de Tailwind "neutral", probada y
+     accesible — solo se sustituye el tono, no la jerarquía de pasos. --- */
+  --color-gray-50: #fafafa;
+  --color-gray-100: #f5f5f5;
+  --color-gray-200: #e5e5e5;
+  --color-gray-300: #d4d4d4;
+  --color-gray-400: #a3a3a3;
+  --color-gray-500: #737373;
+  --color-gray-600: #525252;
+  --color-gray-700: #404040;
+  --color-gray-800: #262626;
+  --color-gray-900: #171717;
+  --color-gray-950: #0a0a0a;
+
+  /* --- amber: color de marca, derivado directo del naranja del logo
+     (#FE6732 = amber-500). El resto de la rampa se generó a partir de
+     ese ancla para mantener compatibilidad con hover/focus/ring ya
+     usados en los componentes (amber-400, amber-500, etc). --- */
+  --color-amber-50: #fff2ec;
+  --color-amber-100: #ffe0d2;
+  --color-amber-200: #ffc2a8;
+  --color-amber-300: #ffa078;
+  --color-amber-400: #ff7e4c;
+  --color-amber-500: #fe6732;
+  --color-amber-600: #e2511f;
+  --color-amber-700: #b8401a;
+  --color-amber-800: #8f3216;
+  --color-amber-900: #66240f;
+  --color-amber-950: #401708;
+}

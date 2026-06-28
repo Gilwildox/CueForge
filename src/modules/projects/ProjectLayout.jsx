@@ -1,3 +1,4 @@
+```jsx
 // Layout principal del proyecto — navegación entre módulos
 import { useState } from 'react'
 import ProjectMetadata from './ProjectMetadata'
@@ -11,18 +12,19 @@ import LightPlot from '../lightplot/LightPlot'
 
 // Módulos disponibles en el menú lateral
 const MODULES = [
-  { id: 'metadata',   label: 'Metadatos' },
-  { id: 'technical',  label: 'Ficha técnica' },
+  { id: 'metadata', label: 'Metadatos' },
+  { id: 'technical', label: 'Ficha técnica' },
   { id: 'luminarias', label: 'Luminarias' },
-  { id: 'scenes',     label: 'Guion' },
-  { id: 'library',    label: 'Biblioteca' },
-  { id: 'budget',     label: 'Presupuesto' },
-  { id: 'lightplot',  label: 'Plano' },
-  { id: 'export',     label: 'Exportar' },
+  { id: 'scenes', label: 'Guion' },
+  { id: 'library', label: 'Biblioteca' },
+  { id: 'budget', label: 'Presupuesto' },
+  { id: 'lightplot', label: 'Plano' },
+  { id: 'export', label: 'Exportar' },
 ]
 
 export default function ProjectLayout({ project, onBack, onUpdate }) {
   const [activeModule, setActiveModule] = useState('metadata')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // Renderiza el módulo activo
   const renderModule = () => {
@@ -53,10 +55,58 @@ export default function ProjectLayout({ project, onBack, onUpdate }) {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white flex">
+
+      {/* Barra superior (solo móvil y tablet) */}
+      {!esPlano && (
+        <div className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-gray-950 border-b border-gray-800 flex items-center px-4 z-50">
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="text-white text-2xl leading-none"
+            aria-label="Abrir menú"
+          >
+            ☰
+          </button>
+
+          <span className="ml-4 font-semibold truncate">
+            {project.metadatos.nombreObra || 'Sin título'}
+          </span>
+        </div>
+      )}
+
+      {/* Fondo oscuro al abrir el menú */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Barra lateral */}
-      <aside className="w-56 bg-gray-950 flex flex-col sticky top-0 h-screen overflow-y-auto py-6 px-4 shrink-0">
+      <aside
+        className={`
+          fixed lg:sticky
+          top-0 left-0
+          h-screen
+          w-56
+          bg-gray-950
+          flex flex-col
+          overflow-y-auto
+          py-6 px-4
+          shrink-0
+          z-40
+          transform
+          transition-transform
+          duration-300
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+          lg:translate-x-0
+        `}
+      >
         <div className="mb-6">
-          <img src={`${import.meta.env.BASE_URL}logo-dark-bg.svg`} alt="CueForge" className="w-40 h-auto" />
+          <img
+            src={`${import.meta.env.BASE_URL}logo-dark-bg.svg`}
+            alt="CueForge"
+            className="w-40 h-auto"
+          />
         </div>
 
         <button
@@ -69,6 +119,7 @@ export default function ProjectLayout({ project, onBack, onUpdate }) {
         <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">
           Proyecto
         </p>
+
         <p className="text-sm font-semibold text-white mb-6 truncate">
           {project.metadatos.nombreObra || 'Sin título'}
         </p>
@@ -77,7 +128,10 @@ export default function ProjectLayout({ project, onBack, onUpdate }) {
           {MODULES.map((mod) => (
             <button
               key={mod.id}
-              onClick={() => setActiveModule(mod.id)}
+              onClick={() => {
+                setActiveModule(mod.id)
+                setSidebarOpen(false)
+              }}
               className={`text-left px-3 py-2 rounded text-sm transition-colors ${
                 activeModule === mod.id
                   ? 'bg-amber-500 text-black font-semibold'
@@ -89,7 +143,7 @@ export default function ProjectLayout({ project, onBack, onUpdate }) {
           ))}
         </nav>
 
-        {/* Crédito — empujado al fondo del sidebar por mt-auto */}
+        {/* Crédito */}
         <div className="mt-auto pt-6 text-xs text-gray-500 border-t border-gray-800">
           CueForge by{' '}
           <a
@@ -103,10 +157,17 @@ export default function ProjectLayout({ project, onBack, onUpdate }) {
         </div>
       </aside>
 
-      {/* Contenido principal — sin padding cuando es el plano */}
-      <main className={`flex-1 overflow-y-auto ${esPlano ? '' : 'p-8'}`}>
+      {/* Contenido principal */}
+      <main
+        className={`
+          flex-1
+          overflow-y-auto
+          ${esPlano ? '' : 'pt-14 lg:pt-0 p-4 lg:p-8'}
+        `}
+      >
         {renderModule()}
       </main>
     </div>
   )
 }
+```

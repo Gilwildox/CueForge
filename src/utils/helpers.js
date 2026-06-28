@@ -62,6 +62,13 @@ export const createEmptyProject = () => ({
   },
   escenas: [],
   presupuesto: [],
+  // Módulo Light Plot — plano de iluminación escénica
+  lightPlot: {
+    instancias:      [],   // símbolos de luminaria colocados en el canvas
+    elementos:       [],   // formas estructurales (líneas, rects, varas, textos)
+    imagenFondo:     null, // dataURL de la imagen de plano base
+    symbolOverrides: {},   // { lumId: 'clave_simbolo' } para tipos personalizados
+  },
 })
 
 // Tipos de luminaria base — no editables

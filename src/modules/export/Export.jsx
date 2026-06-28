@@ -1,6 +1,7 @@
 // Módulo 8 — Exportación
 // Módulo central único de reportes. No persiste datos en el proyecto:
 // Venue y fecha de función son campos de captura libre solo para el documento.
+// Modificación: agrega exportación PDF del plano de iluminación.
 import { useState } from 'react'
 import {
   exportarLuminariasPdf,
@@ -10,6 +11,7 @@ import {
   exportarGuionCompletoPdf,
 } from '../../utils/exportPdf'
 import { exportarGuionExcel, exportarPresupuestoExcel } from '../../utils/exportExcel'
+import { exportarLightPlotPDF, generarSvgDesdeProject } from '../../utils/exportLightPlotPdf'
 
 // ---------------------------------------------------------------------------
 // TarjetaReporte — fila de acción para un reporte individual
@@ -44,12 +46,28 @@ export default function Export({ project }) {
   // Campos libres no persistidos — solo viven en este módulo durante la sesión
   const [venue, setVenue] = useState('')
   const [fechaFuncion, setFechaFuncion] = useState('')
+  const [exportandoPlano, setExportandoPlano] = useState(false)
 
   const infoFuncion = { venue: venue.trim(), fecha: fechaFuncion }
 
-  const hayLuminarias = (project.luminarias ?? []).length > 0
-  const hayEscenas = (project.escenas ?? []).length > 0
+  const hayLuminarias  = (project.luminarias ?? []).length > 0
+  const hayEscenas     = (project.escenas ?? []).length > 0
   const hayPresupuesto = (project.presupuesto ?? []).length > 0
+  const hayPlano       = (project.lightPlot?.instancias ?? []).length > 0
+
+  // Exportación del plano: construye el SVG en memoria (sin necesitar el DOM del canvas)
+  const handleExportarPlano = async () => {
+    setExportandoPlano(true)
+    try {
+      const svgElem = generarSvgDesdeProject(project)
+      await exportarLightPlotPDF(project, svgElem)
+    } catch (err) {
+      console.error('Error exportando plano:', err)
+      alert('Ocurrió un error al generar el PDF del plano.')
+    } finally {
+      setExportandoPlano(false)
+    }
+  }
 
   return (
     <div className="flex flex-col gap-6 max-w-3xl">
@@ -112,9 +130,9 @@ export default function Export({ project }) {
           titulo="Guion de iluminación"
           descripcion="Solo iluminación (vertical) o completo con tramoya/audio/video (horizontal)."
           botones={[
-            { label: 'PDF (solo luz)', onClick: () => exportarGuionLuzPdf(project, infoFuncion), disabled: !hayEscenas },
+            { label: 'PDF (solo luz)',  onClick: () => exportarGuionLuzPdf(project, infoFuncion),      disabled: !hayEscenas },
             { label: 'PDF (completo)', onClick: () => exportarGuionCompletoPdf(project, infoFuncion), disabled: !hayEscenas },
-            { label: 'Excel', onClick: () => exportarGuionExcel(project), disabled: !hayEscenas },
+            { label: 'Excel',          onClick: () => exportarGuionExcel(project),                    disabled: !hayEscenas },
           ]}
         />
 
@@ -122,8 +140,25 @@ export default function Export({ project }) {
           titulo="Presupuesto"
           descripcion="Equipo, origen, proveedor y totales por renta/compra."
           botones={[
-            { label: 'PDF', onClick: () => exportarPresupuestoPdf(project, infoFuncion), disabled: !hayPresupuesto },
-            { label: 'Excel', onClick: () => exportarPresupuestoExcel(project), disabled: !hayPresupuesto },
+            { label: 'PDF',   onClick: () => exportarPresupuestoPdf(project, infoFuncion), disabled: !hayPresupuesto },
+            { label: 'Excel', onClick: () => exportarPresupuestoExcel(project),             disabled: !hayPresupuesto },
+          ]}
+        />
+
+        {/* Plano de iluminación */}
+        <TarjetaReporte
+          titulo="Plano de iluminación"
+          descripcion={
+            hayPlano
+              ? `${project.lightPlot.instancias.length} luminaria${project.lightPlot.instancias.length !== 1 ? 's' : ''} colocada${project.lightPlot.instancias.length !== 1 ? 's' : ''} en el plano. Carta horizontal.`
+              : 'El plano no tiene luminarias colocadas aún.'
+          }
+          botones={[
+            {
+              label:    exportandoPlano ? 'Generando…' : 'PDF',
+              onClick:  handleExportarPlano,
+              disabled: !hayPlano || exportandoPlano,
+            },
           ]}
         />
 

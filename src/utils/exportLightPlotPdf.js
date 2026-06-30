@@ -4,6 +4,7 @@
 import { jsPDF } from 'jspdf'
 import {
   SIMBOLOS_MAP,
+  SIMBOLOS_DISPONIBLES,
   TIPO_A_SIMBOLO,
   resolverColorLuminaria,
   COLOR_DEFAULT,
@@ -11,6 +12,17 @@ import {
 
 const CANVAS_W = 1200
 const CANVAS_H = 850
+
+// Convierte un color hex (#rrggbb) a [r,g,b] para los métodos de color de jsPDF
+const hexARgb = (hex) => {
+  const limpio = (hex || '#cccccc').replace('#', '')
+  const valido = /^[0-9a-fA-F]{6}$/.test(limpio) ? limpio : 'cccccc'
+  return [
+    parseInt(valido.slice(0, 2), 16),
+    parseInt(valido.slice(2, 4), 16),
+    parseInt(valido.slice(4, 6), 16),
+  ]
+}
 
 // Colores PDF (fondo claro)
 const COLOR_NARANJA = [254, 103, 50]
@@ -53,6 +65,35 @@ const serializarJSX = (el) => {
 const simboloSvgStr = (tipo, fill, stroke) => {
   const Comp = SIMBOLOS_MAP[tipo] ?? SIMBOLOS_MAP.generico
   return serializarJSX(Comp({ fill, stroke }))
+}
+
+// ---------------------------------------------------------------------------
+// construirLeyenda — agrupa las instancias colocadas en el plano por símbolo,
+// cuenta cuántas hay de cada uno y resuelve el color/label para dibujarlas.
+// Solo incluye símbolos que realmente están en el plano (no el catálogo completo).
+// ---------------------------------------------------------------------------
+const construirLeyenda = (project) => {
+  const lightPlot  = project.lightPlot ?? {}
+  const luminarias = project.luminarias ?? []
+  const instancias = lightPlot.instancias ?? []
+
+  const grupos = {} // { claveSimbolo: { count, label, fill } }
+
+  instancias.forEach((inst) => {
+    const lum = luminarias.find((l) => l.id === inst.lumId)
+    if (!grupos[inst.simbolo]) {
+      const labelDef = SIMBOLOS_DISPONIBLES.find((s) => s.key === inst.simbolo)
+      const fill = lum
+        ? resolverColorLuminaria(lum, lightPlot, inst)
+        : '#f0f0f0'
+      grupos[inst.simbolo] = { count: 0, label: labelDef?.label ?? inst.simbolo, fill }
+    }
+    grupos[inst.simbolo].count += 1
+  })
+
+  return Object.entries(grupos)
+    .map(([clave, datos]) => ({ clave, ...datos }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'es'))
 }
 
 // ---------------------------------------------------------------------------
@@ -99,13 +140,11 @@ export const generarSvgDesdeProject = (project) => {
     return ''
   }).join('\n')
 
-  // Instancias de luminaria — trazo negro, fill = color de mica o neutro claro
+  // Instancias de luminaria — trazo negro, fill resuelto con la misma
+  // prioridad que en pantalla (fijo > colorOverride/typeDefaults > neutro)
   const instStr = instancias.map((inst) => {
-    const lum    = luminarias.find((l) => l.id === inst.lumId)
-    // Si la luminaria tiene color fijo, se usa ese color en el PDF también
-    const fill   = (lum && lum.tipoColor === 'fijo' && lum.colorFijo?.hex)
-      ? lum.colorFijo.hex
-      : FILL_SIM
+    const lum  = luminarias.find((l) => l.id === inst.lumId)
+    const fill = lum ? resolverColorLuminaria(lum, lightPlot, inst) : FILL_SIM
     const escala = inst.escala ?? 1
     const simStr = simboloSvgStr(inst.simbolo, fill, STROKE_PDF)
     const etiq   = (inst.canal !== '' && inst.canal != null)
@@ -175,10 +214,14 @@ const svgAImagenPng = (svgElement) =>
 
 // ---------------------------------------------------------------------------
 // exportarLightPlotPDF
+// incluirListado=true reserva una columna lateral derecha con la leyenda de
+// símbolos usados en el plano (agrupados, con cantidad). El plano se reduce
+// proporcionalmente para no empalmarse con esa columna.
 // ---------------------------------------------------------------------------
-export const exportarLightPlotPDF = async (project, svgElement) => {
+export const exportarLightPlotPDF = async (project, svgElement, incluirListado = false) => {
   const meta = project.metadatos ?? {}
   const png  = await svgAImagenPng(svgElement)
+  const leyenda = incluirListado ? construirLeyenda(project) : []
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'letter' })
   const PW  = 279, PH = 216, M = 12
@@ -227,7 +270,14 @@ export const exportarLightPlotPDF = async (project, svgElement) => {
   const ALTO_PIE = 8
   const yCanvas  = ALTO_HEADER + 1.5
   const hCanvas  = PH - ALTO_HEADER - ALTO_PIE - 3
-  const wCanvas  = PW - M * 2
+
+  // Columna de leyenda: ancho fijo, separado del plano por un margen propio.
+  // Si no hay listado o no hay símbolos que mostrar, el plano usa todo el ancho.
+  const ANCHO_LEYENDA = 52
+  const hayLeyenda = incluirListado && leyenda.length > 0
+  const wCanvas = hayLeyenda
+    ? (PW - M * 2 - ANCHO_LEYENDA - M)
+    : (PW - M * 2)
 
   const ratioSvg = CANVAS_W / CANVAS_H
   const ratioBox = wCanvas / hCanvas
@@ -247,6 +297,52 @@ export const exportarLightPlotPDF = async (project, svgElement) => {
   doc.setDrawColor(180, 180, 180)
   doc.setLineWidth(0.3)
   doc.rect(imgX, imgY, imgW, imgH)
+
+  // --- Columna de leyenda ---
+  if (hayLeyenda) {
+    const xLey = PW - M - ANCHO_LEYENDA
+    const yLeyTope = yCanvas
+
+    doc.setDrawColor(210, 210, 210)
+    doc.setLineWidth(0.3)
+    doc.line(xLey - M / 2, yLeyTope, xLey - M / 2, yLeyTope + hCanvas)
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
+    doc.setTextColor(...COLOR_NEGRO)
+    doc.text('SIMBOLOGÍA', xLey, yLeyTope + 3)
+
+    let yLey = yLeyTope + 9
+    const ALTO_FILA = 9
+    const filasMax = Math.floor((hCanvas - 9) / ALTO_FILA)
+
+    leyenda.slice(0, filasMax).forEach((item) => {
+      // Círculo de color como referencia visual rápida
+      const [r, g, b] = hexARgb(item.fill)
+      doc.setFillColor(r, g, b)
+      doc.setDrawColor(...COLOR_NEGRO)
+      doc.setLineWidth(0.25)
+      doc.circle(xLey + 2, yLey, 1.8, 'FD')
+
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(7.5)
+      doc.setTextColor(...COLOR_NEGRO)
+      doc.text(item.label, xLey + 6, yLey + 0.9)
+
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(...COLOR_GRIS)
+      doc.text(`× ${item.count}`, xLey + ANCHO_LEYENDA - 1, yLey + 0.9, { align: 'right' })
+
+      yLey += ALTO_FILA
+    })
+
+    if (leyenda.length > filasMax) {
+      doc.setFont('helvetica', 'italic')
+      doc.setFontSize(6.5)
+      doc.setTextColor(...COLOR_GRIS)
+      doc.text(`+ ${leyenda.length - filasMax} símbolo(s) más`, xLey, yLey + 2)
+    }
+  }
 
   // --- Pie de página claro ---
   const yPie = PH - 3

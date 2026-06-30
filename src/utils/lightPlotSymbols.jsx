@@ -22,17 +22,35 @@ export const SIMBOLOS_DISPONIBLES = [
   { key: 'generico',     label: 'Genérico' },
 ]
 
+// Color neutro para luminarias sin color asignado (tipoColor === 'ninguno')
+// y como placeholder hasta que se elija color manualmente en el plano.
+export const COLOR_NEUTRO  = '#f5f5f5'
 export const COLOR_DEFAULT = '#4a9eff'
 
-export const resolverColorLuminaria = (lum) => {
+// Resuelve el color de relleno del símbolo. Prioridad:
+// 1. colorFijo de la luminaria (si tipoColor === 'fijo', nunca se sobreescribe
+//    por nada — ni colorOverride ni typeDefaults pueden contradecirlo)
+// 2. colorOverride en la instancia (ajuste manual desde el inspector,
+//    solo aplica a tipoColor variable)
+// 3. color guardado en typeDefaults para ese tipo (solo aplica a variable)
+// 4. COLOR_NEUTRO si tipoColor es 'ninguno' o 'variable' sin color aún asignado
+// Los parámetros lightPlot e inst son opcionales para no romper llamadas existentes.
+export const resolverColorLuminaria = (lum, lightPlot, inst) => {
   if (lum.tipoColor === 'fijo' && lum.colorFijo?.hex) return lum.colorFijo.hex
-  return COLOR_DEFAULT
+  if (lum.tipoColor !== 'variable') return COLOR_NEUTRO
+  if (inst?.colorOverride) return inst.colorOverride
+  const porTipo = lightPlot?.typeDefaults?.[lum.tipo]?.color
+  if (porTipo) return porTipo
+  return COLOR_NEUTRO
 }
 
 export const resolverSimbolo = (lum, lightPlotData) => {
   const override = lightPlotData?.symbolOverrides?.[lum.id]
   if (override) return override
-  return TIPO_A_SIMBOLO[lum.tipo] ?? 'generico'
+  if (TIPO_A_SIMBOLO[lum.tipo]) return TIPO_A_SIMBOLO[lum.tipo]
+  const porTipo = lightPlotData?.typeDefaults?.[lum.tipo]?.simbolo
+  if (porTipo) return porTipo
+  return 'generico'
 }
 
 // ---------------------------------------------------------------------------

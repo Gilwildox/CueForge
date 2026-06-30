@@ -56,11 +56,11 @@ export default function Export({ project }) {
   const hayPlano       = (project.lightPlot?.instancias ?? []).length > 0
 
   // Exportación del plano: construye el SVG en memoria (sin necesitar el DOM del canvas)
-  const handleExportarPlano = async () => {
+  const handleExportarPlano = async (incluirListado) => {
     setExportandoPlano(true)
     try {
       const svgElem = generarSvgDesdeProject(project)
-      await exportarLightPlotPDF(project, svgElem)
+      await exportarLightPlotPDF(project, svgElem, incluirListado)
     } catch (err) {
       console.error('Error exportando plano:', err)
       alert('Ocurrió un error al generar el PDF del plano.')
@@ -156,7 +156,12 @@ export default function Export({ project }) {
           botones={[
             {
               label:    exportandoPlano ? 'Generando…' : 'PDF',
-              onClick:  handleExportarPlano,
+              onClick:  () => handleExportarPlano(false),
+              disabled: !hayPlano || exportandoPlano,
+            },
+            {
+              label:    exportandoPlano ? 'Generando…' : 'PDF con listado',
+              onClick:  () => handleExportarPlano(true),
               disabled: !hayPlano || exportandoPlano,
             },
           ]}

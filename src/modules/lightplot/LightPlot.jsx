@@ -54,6 +54,7 @@ export const createEmptyLightPlot = () => ({
   instancias:      [],
   elementos:       [],
   symbolOverrides: {},
+  typeDefaults:    {}, // { 'tipo_personalizado': { simbolo: 'clave', color: '#hex' } }
 })
 
 const snapGrid = (v, snap) => Math.round(v / snap) * snap
@@ -78,27 +79,40 @@ function SimboloSVG({ tipo, fill, stroke, scale = 1 }) {
 }
 
 // ---------------------------------------------------------------------------
-// SelectorSimbolo
+// SelectorSimbolo — además del símbolo, permite fijar un color por defecto
+// para el tipo cuando la luminaria es de color variable (no aplica a fijo).
 // ---------------------------------------------------------------------------
-function SelectorSimbolo({ onSeleccionar, onCancelar }) {
+function SelectorSimbolo({ permiteColor, onSeleccionar, onCancelar }) {
+  const [colorElegido, setColorElegido] = useState(COLOR_DEFAULT)
+
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-800 rounded-lg p-5 w-80 flex flex-col gap-3">
         <h3 className="text-sm font-semibold text-white">¿Qué símbolo usar?</h3>
+        <p className="text-xs text-gray-500 -mt-2">
+          Se aplicará a todas las luminarias de este mismo tipo personalizado.
+        </p>
         <div className="grid grid-cols-3 gap-2">
           {SIMBOLOS_DISPONIBLES.map((s) => {
             const Comp = SIMBOLOS_MAP[s.key]
             return (
-              <button key={s.key} onClick={() => onSeleccionar(s.key)}
+              <button key={s.key} onClick={() => onSeleccionar(s.key, permiteColor ? colorElegido : null)}
                 className="flex flex-col items-center gap-1 p-2 rounded bg-gray-700 hover:bg-gray-600 transition-colors">
                 <svg viewBox="-22 -34 44 68" width="40" height="60">
-                  <Comp fill={COLOR_DEFAULT} stroke="#ffffff" />
+                  <Comp fill={permiteColor ? colorElegido : COLOR_DEFAULT} stroke="#ffffff" />
                 </svg>
                 <span className="text-xs text-gray-300 text-center leading-tight">{s.label}</span>
               </button>
             )
           })}
         </div>
+        {permiteColor && (
+          <div className="flex items-center gap-2 border-t border-gray-700 pt-3">
+            <label className="text-xs text-gray-400">Color por defecto del tipo</label>
+            <input type="color" value={colorElegido} onChange={(e) => setColorElegido(e.target.value)}
+              className="w-8 h-7 rounded cursor-pointer border-0 bg-transparent" />
+          </div>
+        )}
         <button onClick={onCancelar}
           className="self-end text-xs text-gray-500 hover:text-white transition-colors">Cancelar</button>
       </div>
@@ -123,7 +137,7 @@ function PanelInspectorInstancia({ instancia, luminaria, onUpdate, onEliminar, o
     onUpdate(act)
   }
 
-  const fill = luminaria ? resolverColorLuminaria(luminaria) : COLOR_DEFAULT
+  const fill = luminaria ? resolverColorLuminaria(luminaria, null, form) : COLOR_DEFAULT
   const Comp = SIMBOLOS_MAP[form.simbolo] ?? SIMBOLOS_MAP.generico
 
   return (
@@ -201,6 +215,20 @@ function PanelInspectorInstancia({ instancia, luminaria, onUpdate, onEliminar, o
             ))}
           </select>
         </div>
+
+        {/* Color — solo para luminarias de color variable. En fijo el color
+            viene de la mica y no se puede tocar aquí; en ninguno no aplica. */}
+        {luminaria?.tipoColor === 'variable' && (
+          <div className="flex flex-col gap-0.5">
+            <label className="text-xs text-gray-500">Color en el plano</label>
+            <div className="flex items-center gap-2">
+              <input type="color" value={form.colorOverride ?? fill}
+                onChange={(e) => cambiar('colorOverride', e.target.value)}
+                className="w-9 h-7 rounded cursor-pointer border-0 bg-transparent shrink-0" />
+              <span className="text-xs text-gray-500">Ajuste manual para esta luminaria</span>
+            </div>
+          </div>
+        )}
 
         {/* Notas */}
         <div className="flex flex-col gap-0.5">
@@ -449,7 +477,7 @@ function PanelLuminarias({ luminarias, instancias, lightPlot, onDragStart, onCli
 
 function ItemLuminaria({ lum, enPlano, lightPlot, onDragStart, onClickColocar }) {
   const clave = resolverSimbolo(lum, lightPlot)
-  const fill  = resolverColorLuminaria(lum)
+  const fill  = resolverColorLuminaria(lum, lightPlot)
   const Comp  = SIMBOLOS_MAP[clave] ?? SIMBOLOS_MAP.generico
 
   return (
@@ -911,13 +939,14 @@ export default function LightPlot({ project, onUpdate }) {
   // ---------------------------------------------------------------------------
   const handleDragStart = (e, lum) => e.dataTransfer.setData('lumId', lum.id)
 
-  const colocarInstancia = useCallback((lum, pos, clave) => {
+  const colocarInstancia = useCallback((lum, pos, clave, colorOverride) => {
     if (lightPlot.instancias.some((i) => i.lumId === lum.id)) return
     const nueva = {
       id: generateId(), lumId: lum.id,
       x: pos.x, y: pos.y,
       rotacion: 0, escala: 1,
       simbolo: clave,
+      ...(colorOverride ? { colorOverride } : {}),
       canal: lum.numero, dimmer: '',
       proposito: lum.afoque || '',
       grupo: lum.nombreGrupo || '',
@@ -931,6 +960,42 @@ export default function LightPlot({ project, onUpdate }) {
     sincronizarFlags()
   }, [lightPlot, persistir, sincronizarFlags])
 
+  // Cuando el usuario elige símbolo (y color, si aplica) para un tipo personalizado
+  // por primera vez, se guarda en typeDefaults para que las siguientes luminarias
+  // del mismo tipo lo hereden automáticamente sin volver a preguntar.
+  const colocarConDefaultDeTipo = useCallback((lum, pos, clave, colorElegido) => {
+    if (lightPlot.instancias.some((i) => i.lumId === lum.id)) return
+    const colorParaInstancia = lum.tipoColor === 'variable' ? colorElegido : null
+    const nuevoTypeDefault = {
+      simbolo: clave,
+      ...(colorParaInstancia ? { color: colorParaInstancia } : {}),
+    }
+    const nueva = {
+      id: generateId(), lumId: lum.id,
+      x: pos.x, y: pos.y,
+      rotacion: 0, escala: 1,
+      simbolo: clave,
+      ...(colorParaInstancia ? { colorOverride: colorParaInstancia } : {}),
+      canal: lum.numero, dimmer: '',
+      proposito: lum.afoque || '',
+      grupo: lum.nombreGrupo || '',
+      notas: '',
+    }
+    persistir(
+      {
+        ...lightPlot,
+        typeDefaults: { ...lightPlot.typeDefaults, [lum.tipo]: nuevoTypeDefault },
+        instancias: [...lightPlot.instancias, nueva],
+      },
+      lightPlot
+    )
+    setPendienteCustomState(null)
+    sincronizarFlags()
+  }, [lightPlot, persistir, sincronizarFlags])
+
+  // Resuelve el símbolo/color ya guardados para el tipo, si existen
+  const resolverDefaultDeTipo = (lum) => lightPlot.typeDefaults?.[lum.tipo]
+
   const handleDrop = (e) => {
     e.preventDefault()
     const lumId = e.dataTransfer.getData('lumId')
@@ -939,8 +1004,10 @@ export default function LightPlot({ project, onUpdate }) {
     if (!lum || lightPlot.instancias.some((i) => i.lumId === lum.id)) return
     const pos   = toCanvas(e.clientX, e.clientY, true)
     const clave = TIPO_A_SIMBOLO[lum.tipo]
-    if (!clave) { setPendienteCustomState({ lum, pos }); return }
-    colocarInstancia(lum, pos, clave)
+    if (clave) { colocarInstancia(lum, pos, clave); return }
+    const porTipo = resolverDefaultDeTipo(lum)
+    if (porTipo) { colocarInstancia(lum, pos, porTipo.simbolo, porTipo.color); return }
+    setPendienteCustomState({ lum, pos })
   }
 
   const handleClickColocar = (lum) => {
@@ -951,8 +1018,10 @@ export default function LightPlot({ project, onUpdate }) {
     const cx = rect ? (rect.width  / 2 + scrollL) / zoom : CANVAS_W / 2
     const cy = rect ? (rect.height / 2 + scrollT) / zoom : CANVAS_H / 2
     const clave = TIPO_A_SIMBOLO[lum.tipo]
-    if (!clave) { setPendienteCustomState({ lum, pos: { x: cx, y: cy } }); return }
-    colocarInstancia(lum, { x: cx, y: cy }, clave)
+    if (clave) { colocarInstancia(lum, { x: cx, y: cy }, clave); return }
+    const porTipo = resolverDefaultDeTipo(lum)
+    if (porTipo) { colocarInstancia(lum, { x: cx, y: cy }, porTipo.simbolo, porTipo.color); return }
+    setPendienteCustomState({ lum, pos: { x: cx, y: cy } })
   }
 
   // ---------------------------------------------------------------------------
@@ -1273,6 +1342,51 @@ export default function LightPlot({ project, onUpdate }) {
   const haySeleccion = Boolean(selInst || selElem)
 
   // ---------------------------------------------------------------------------
+  // Bloqueo en dispositivos táctiles/pantallas estrechas — el editor depende
+  // de mouse y drag&drop HTML5, que no funcionan de forma confiable en touch.
+  // Se combinan dos señales para evitar falsos positivos/negativos de cada
+  // una por separado:
+  // - pointer: coarse → el dispositivo de entrada principal es táctil
+  //   (detecta celulares y tablets reales; puede dar falso positivo en
+  //   laptops convertibles con pantalla táctil, por eso no se usa solo)
+  // - ancho de ventana < 1024px → pantalla pequeña típica de celular/tablet
+  //   en vertical (puede dar falso positivo en laptops con zoom alto, por
+  //   eso tampoco se usa solo)
+  // Solo se bloquea cuando AMBAS señales coinciden: dispositivo táctil Y
+  // pantalla estrecha. Una laptop convertible con mouse y pantalla grande
+  // pasa; una tablet en horizontal grande también se bloquea si es touch.
+  // ---------------------------------------------------------------------------
+  const ANCHO_MINIMO = 1024
+  const esPunteroTactil = typeof window !== 'undefined'
+    && window.matchMedia?.('(pointer: coarse)').matches
+
+  const [anchoVentana, setAnchoVentana] = useState(
+    typeof window !== 'undefined' ? window.innerWidth : ANCHO_MINIMO
+  )
+
+  useEffect(() => {
+    const onResize = () => setAnchoVentana(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  const dispositivoNoApto = esPunteroTactil && anchoVentana < ANCHO_MINIMO
+
+  if (dispositivoNoApto) {
+    return (
+      <div className="flex flex-col items-center justify-center text-center px-6 py-20 gap-3"
+        style={{ height: 'calc(100vh - 32px)' }}>
+        <span className="text-3xl">🖥️</span>
+        <h2 className="text-lg font-semibold text-white">El plano de iluminación requiere una pantalla más grande</h2>
+        <p className="text-sm text-gray-400 max-w-sm">
+          Este editor usa arrastre con mouse y no funciona de forma confiable en celular o tablet.
+          Ábrelo desde una computadora para colocar y editar luminarias en el plano.
+        </p>
+      </div>
+    )
+  }
+
+  // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
   return (
@@ -1375,7 +1489,7 @@ export default function LightPlot({ project, onUpdate }) {
               <g id="sym-layer">
                 {lightPlot.instancias.map((inst) => {
                   const lum   = luminarias.find((l) => l.id === inst.lumId)
-                  const fill  = lum ? resolverColorLuminaria(lum) : COLOR_DEFAULT
+                  const fill  = lum ? resolverColorLuminaria(lum, lightPlot, inst) : COLOR_DEFAULT
                   const esSel = inst.id === selInst
                   const esc   = inst.escala ?? 1
 
@@ -1439,7 +1553,8 @@ export default function LightPlot({ project, onUpdate }) {
       {/* Modal selector símbolo custom */}
       {pendienteCustomState && (
         <SelectorSimbolo
-          onSeleccionar={(c) => colocarInstancia(pendienteCustomState.lum, pendienteCustomState.pos, c)}
+          permiteColor={pendienteCustomState.lum.tipoColor === 'variable'}
+          onSeleccionar={(c, color) => colocarConDefaultDeTipo(pendienteCustomState.lum, pendienteCustomState.pos, c, color)}
           onCancelar={() => setPendienteCustomState(null)}
         />
       )}

@@ -26,10 +26,13 @@ const CANVAS_H  = 850
 const ZOOM_MIN  = 0.3
 const ZOOM_MAX  = 3.0
 const ZOOM_STEP = 0.1
-const GRID_SIZE = 50
-const SNAP_SIZE = 25
-const DRAG_UMBRAL  = 4   // px en coordenadas canvas antes de considerar arrastre
-const HIST_MAX     = 100 // estados máximos en el historial
+const GRID_STEP_DEFAULT = 25 // tamaño base de grid/snap (antes SNAP_SIZE fijo)
+const GRID_STEP_MIN     = 10
+const GRID_STEP_MAX     = 100
+const GRID_STEP_INCR    = 5
+const DRAG_UMBRAL   = 4   // px en coordenadas canvas antes de considerar arrastre
+const HIST_MAX       = 100 // estados máximos en el historial
+const OFFSET_DUPLICADO = 20 // desplazamiento en Y al duplicar un elemento estructural
 
 const STROKE_SIM    = '#1a1a1a'
 const STROKE_STRUCT = '#1a1a1a'
@@ -250,7 +253,7 @@ function PanelInspectorInstancia({ instancia, luminaria, onUpdate, onEliminar, o
 // ---------------------------------------------------------------------------
 // PanelInspectorElemento
 // ---------------------------------------------------------------------------
-function PanelInspectorElemento({ elemento, onUpdate, onEliminar, onCerrar }) {
+function PanelInspectorElemento({ elemento, onUpdate, onEliminar, onDuplicar, onCerrar }) {
   const tipoLabel = { line: 'Línea', rect: 'Rectángulo', vara: 'Vara / Percha', text: 'Texto' }
 
   const cx  = ((elemento.x1 ?? 0) + (elemento.x2 ?? elemento.x1 ?? 0)) / 2
@@ -409,9 +412,113 @@ function PanelInspectorElemento({ elemento, onUpdate, onEliminar, onCerrar }) {
           </div>
         )}
 
+        <div className="flex gap-2 mt-1">
+          <button onClick={onDuplicar}
+            className="flex-1 text-xs text-amber-400 hover:text-amber-300 border border-amber-900 hover:border-amber-700 rounded py-1.5 transition-colors">
+            Duplicar
+          </button>
+          <button onClick={onEliminar}
+            className="flex-1 text-xs text-red-400 hover:text-red-300 border border-red-900 hover:border-red-700 rounded py-1.5 transition-colors">
+            Eliminar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// PanelInspectorMultiple — edición en bloque de varias LUMINARIAS seleccionadas
+// (los elementos estructurales en selección múltiple solo se mueven, no
+// muestran panel — ver nota en handleEliminarSeleccion/handleSvgMouseUp).
+// Solo permite editar los campos que TODAS las instancias tienen en común:
+//   - Rotación y escala: siempre editables (se aplican a todas por igual).
+//   - Símbolo: solo si todas comparten actualmente el mismo símbolo.
+//   - Color en el plano: solo si TODAS las luminarias correspondientes son
+//     de tipoColor "variable".
+// ---------------------------------------------------------------------------
+function PanelInspectorMultiple({ instancias, luminarias, onUpdateBatch, onEliminar, onCerrar }) {
+  const lumsSel = instancias
+    .map((inst) => luminarias.find((l) => l.id === inst.lumId))
+    .filter(Boolean)
+
+  const simboloComun = instancias.length > 0 && instancias.every((i) => i.simbolo === instancias[0].simbolo)
+    ? instancias[0].simbolo
+    : null
+
+  const colorEditable = lumsSel.length === instancias.length && lumsSel.length > 0
+    && lumsSel.every((l) => l.tipoColor === 'variable')
+
+  const colorComun = instancias.length > 0 && instancias.every(
+    (i) => (i.colorOverride ?? COLOR_DEFAULT) === (instancias[0].colorOverride ?? COLOR_DEFAULT)
+  ) ? (instancias[0].colorOverride ?? COLOR_DEFAULT) : COLOR_DEFAULT
+
+  const escalaComun = instancias.length > 0 && instancias.every(
+    (i) => (i.escala ?? 1) === (instancias[0].escala ?? 1)
+  ) ? (instancias[0].escala ?? 1) : null
+
+  return (
+    <div className="w-56 bg-gray-900 border-l border-gray-700 flex flex-col overflow-hidden shrink-0">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700 shrink-0 bg-gray-800">
+        <span className="text-xs font-semibold text-white truncate">
+          {instancias.length} luminarias seleccionadas
+        </span>
+        <button onClick={onCerrar}
+          className="text-gray-400 hover:text-white text-xl leading-none ml-2 shrink-0">×</button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3">
+        <p className="text-xs text-gray-600">
+          Solo se muestran los campos que estas luminarias tienen en común.
+        </p>
+
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-500">Rotación (aplicar a todas)</label>
+          <div className="flex gap-1 flex-wrap">
+            {[0, 45, 90, 135, 180, 270].map((deg) => (
+              <button key={deg} onClick={() => onUpdateBatch({ rotacion: deg })}
+                className="px-1.5 py-0.5 text-xs bg-gray-700 hover:bg-gray-600 rounded text-gray-300 transition-colors">
+                {deg}°
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-0.5">
+          <label className="text-xs text-gray-500">
+            Escala {escalaComun ? `: ${escalaComun.toFixed(1)}×` : '(valores distintos)'}
+          </label>
+          <input type="range" min="0.3" max="3.0" step="0.1"
+            defaultValue={escalaComun ?? 1}
+            onChange={(e) => onUpdateBatch({ escala: Number(e.target.value) })}
+            className="accent-amber-500" />
+        </div>
+
+        {simboloComun && (
+          <div className="flex flex-col gap-0.5">
+            <label className="text-xs text-gray-500">Símbolo (todas comparten este)</label>
+            <select value={simboloComun}
+              onChange={(e) => onUpdateBatch({ simbolo: e.target.value })}
+              className="bg-gray-800 text-white rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500">
+              {SIMBOLOS_DISPONIBLES.map((s) => (
+                <option key={s.key} value={s.key}>{s.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {colorEditable && (
+          <div className="flex flex-col gap-0.5">
+            <label className="text-xs text-gray-500">Color en el plano (aplicar a todas)</label>
+            <input type="color" defaultValue={colorComun}
+              onChange={(e) => onUpdateBatch({ colorOverride: e.target.value })}
+              className="w-full h-8 rounded cursor-pointer border-0" />
+          </div>
+        )}
+
         <button onClick={onEliminar}
           className="w-full text-xs text-red-400 hover:text-red-300 border border-red-900 hover:border-red-700 rounded py-1.5 transition-colors mt-1">
-          Eliminar elemento
+          Eliminar {instancias.length} del plano
         </button>
       </div>
     </div>
@@ -533,6 +640,8 @@ function BarraHerramientas({
   colorTrazo, setColorTrazo,
   mostrarGrid, setMostrarGrid,
   snapActivo, setSnapActivo,
+  gridStep, setGridStep,
+  marcoActivo, setMarcoActivo,
   tieneFondo, onImportarFondo, onLimpiarFondo,
   haySeleccion, onEliminarSeleccion,
   onInsertarPlantilla,
@@ -590,6 +699,27 @@ function BarraHerramientas({
         <button onClick={() => setSnapActivo((v) => !v)}
           className={`px-2 h-7 rounded transition-colors ${snapActivo ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>
           ⊕ Snap
+        </button>
+
+        {/* Tamaño de grid/snap */}
+        <div className="flex items-center gap-0.5">
+          <button onClick={() => setGridStep((s) => Math.max(GRID_STEP_MIN, s - GRID_STEP_INCR))}
+            title="Reducir tamaño de grid/snap"
+            className="w-6 h-7 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded flex items-center justify-center">−</button>
+          <span className="text-gray-500 w-6 text-center">{gridStep}</span>
+          <button onClick={() => setGridStep((s) => Math.min(GRID_STEP_MAX, s + GRID_STEP_INCR))}
+            title="Aumentar tamaño de grid/snap"
+            className="w-6 h-7 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded flex items-center justify-center">+</button>
+        </div>
+
+        <div className="w-px h-5 bg-gray-700" />
+
+        {/* Multiselección por marco — modo opt-in, arrastrar sobre el lienzo
+            selecciona varios elementos en vez de limpiar la selección */}
+        <button onClick={() => setMarcoActivo((v) => !v)}
+          title="Multiselección: arrastra sobre el lienzo para seleccionar varios elementos"
+          className={`px-2 h-7 rounded transition-colors ${marcoActivo ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>
+          ⬚ Multiselección
         </button>
 
         {/* Shift tip */}
@@ -756,13 +886,19 @@ export default function LightPlot({ project, onUpdate }) {
   const [colorTrazo, setColorTrazo]         = useState('#1a1a1a')
   const [mostrarGrid, setMostrarGrid]       = useState(true)
   const [snapActivo, setSnapActivo]         = useState(true)
+  const [gridStep, setGridStep]             = useState(GRID_STEP_DEFAULT)
   const [shiftActivo, setShiftActivo]       = useState(false)
   const [panelColapsado, setPanelColapsado] = useState(false)
   const [imagenFondoSesion, setImagenFondoSesion] = useState(null)
 
-  // Selección
-  const [selInst, setSelInst] = useState(null)
-  const [selElem, setSelElem] = useState(null)
+  // Selección — arreglos de IDs para permitir selección múltiple
+  const [selInsts, setSelInsts] = useState([]) // instancias de luminaria
+  const [selElems, setSelElems] = useState([]) // elementos estructurales (línea, rect, vara, texto)
+
+  // Selección por marco (rectángulo)
+  const [marcoActivo, setMarcoActivo] = useState(false)
+  const [marcoDibujando, setMarcoDibujando] = useState(null) // {x1,y1,x2,y2} rectángulo visual
+  const marcoDragRef = useRef(null) // {x1,y1,aditivo} mientras se arrastra el marco
 
   // Dibujo en curso
   const [dibujando, setDibujando] = useState(null)
@@ -835,8 +971,8 @@ export default function LightPlot({ project, onUpdate }) {
     const act = { ...project, lightPlot: estadoAnterior }
     onUpdate(act)
     await saveProject(act)
-    setSelInst(null)
-    setSelElem(null)
+    setSelInsts([])
+    setSelElems([])
   }, [lightPlot, project, onUpdate, sincronizarFlags])
 
   // ---------------------------------------------------------------------------
@@ -851,8 +987,8 @@ export default function LightPlot({ project, onUpdate }) {
     const act = { ...project, lightPlot: estadoSiguiente }
     onUpdate(act)
     await saveProject(act)
-    setSelInst(null)
-    setSelElem(null)
+    setSelInsts([])
+    setSelElems([])
   }, [lightPlot, project, onUpdate, sincronizarFlags])
 
   // ---------------------------------------------------------------------------
@@ -862,8 +998,8 @@ export default function LightPlot({ project, onUpdate }) {
     const vacio = createEmptyLightPlot()
     await persistir(vacio, lightPlot)
     sincronizarFlags()
-    setSelInst(null)
-    setSelElem(null)
+    setSelInsts([])
+    setSelElems([])
   }, [lightPlot, persistir, sincronizarFlags])
 
   // ---------------------------------------------------------------------------
@@ -889,11 +1025,16 @@ export default function LightPlot({ project, onUpdate }) {
       if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return
       const map = { v:'select', l:'line', r:'rect', p:'vara', t:'text' }
       if (map[e.key.toLowerCase()]) setHerramienta(map[e.key.toLowerCase()])
-      if (e.key === 'Escape') { setSelInst(null); setSelElem(null) }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && (selInst || selElem)) {
+      if (e.key === 'Escape') {
+        setSelInsts([])
+        setSelElems([])
+        marcoDragRef.current = null
+        setMarcoDibujando(null)
+      }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && (selInsts.length > 0 || selElems.length > 0)) {
         e.preventDefault()
-        if (selInst) handleEliminarInstancia(selInst)
-        else if (selElem) handleEliminarElemento(selElem)
+        if (selInsts.length > 0) handleEliminarInstancias(selInsts)
+        else if (selElems.length > 0) handleEliminarElementos(selElems)
       }
       if ((e.key === '+' || e.key === '=') && !e.ctrlKey)
         setZoom((z) => Math.min(ZOOM_MAX, +(z+ZOOM_STEP).toFixed(2)))
@@ -904,7 +1045,7 @@ export default function LightPlot({ project, onUpdate }) {
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up) }
-  }, [selInst, selElem, handleDeshacer, handleRehacer])
+  }, [selInsts, selElems, handleDeshacer, handleRehacer])
 
   // ---------------------------------------------------------------------------
   // Coordenadas canvas
@@ -914,9 +1055,9 @@ export default function LightPlot({ project, onUpdate }) {
     if (!rect) return { x: 0, y: 0 }
     let x = (clientX - rect.left) / zoom
     let y = (clientY - rect.top)  / zoom
-    if (conSnap && snapActivo) { x = snapGrid(x, SNAP_SIZE); y = snapGrid(y, SNAP_SIZE) }
+    if (conSnap && snapActivo) { x = snapGrid(x, gridStep); y = snapGrid(y, gridStep) }
     return { x, y }
-  }, [zoom, snapActivo])
+  }, [zoom, snapActivo, gridStep])
 
   // ---------------------------------------------------------------------------
   // Zoom con rueda
@@ -1032,37 +1173,86 @@ export default function LightPlot({ project, onUpdate }) {
     e.stopPropagation()
     e.preventDefault()
     const pos = toCanvas(e.clientX, e.clientY)
-    // Guarda snapshot del lightPlot para recuperarlo en undo si hay movimiento
+    const modificador = e.shiftKey || e.ctrlKey || e.metaKey
+
+    let nuevaSeleccion
+    if (modificador) {
+      // Shift/Ctrl: agrega o quita esta instancia de la selección actual
+      nuevaSeleccion = selInsts.includes(inst.id)
+        ? selInsts.filter((id) => id !== inst.id)
+        : [...selInsts, inst.id]
+    } else {
+      // Click simple sobre una instancia YA seleccionada: conserva el grupo
+      // (para poder arrastrarlo junto). Click simple sobre una NO seleccionada:
+      // colapsa la selección a esa sola.
+      nuevaSeleccion = selInsts.includes(inst.id) ? selInsts : [inst.id]
+    }
+
+    setSelElems([])
+    setSelInsts(nuevaSeleccion)
+
+    if (nuevaSeleccion.length === 0) {
+      arrastrando.current = null
+      return
+    }
+
+    // Guarda snapshot del lightPlot y la posición inicial de cada instancia
+    // seleccionada, para poder trasladarlas juntas como bloque rígido
+    const posiciones = {}
+    nuevaSeleccion.forEach((id) => {
+      const i = lightPlot.instancias.find((x) => x.id === id)
+      if (i) posiciones[id] = { x: i.x, y: i.y }
+    })
     arrastrando.current = {
-      id: inst.id,
-      dx: pos.x - inst.x,
-      dy: pos.y - inst.y,
+      ids: nuevaSeleccion,
+      startMouse: pos,
+      startPositions: posiciones,
       moved: false,
       snapshotAntes: JSON.parse(JSON.stringify(lightPlot)),
     }
-    setSelElem(null)
-    setSelInst(inst.id)
   }
 
   // ---------------------------------------------------------------------------
-  // MouseDown en elemento estructural
+  // MouseDown en elemento estructural — mismo patrón que instancias:
+  // Shift/Ctrl agrega o quita de la selección; click simple sobre uno ya
+  // seleccionado conserva el grupo para arrastrarlo junto.
   // ---------------------------------------------------------------------------
   const handleElemMouseDown = (e, elem) => {
     if (herramienta !== 'select' || e.button !== 0) return
     e.stopPropagation()
     e.preventDefault()
     const pos = toCanvas(e.clientX, e.clientY)
+    const modificador = e.shiftKey || e.ctrlKey || e.metaKey
+
+    let nuevaSeleccion
+    if (modificador) {
+      nuevaSeleccion = selElems.includes(elem.id)
+        ? selElems.filter((id) => id !== elem.id)
+        : [...selElems, elem.id]
+    } else {
+      nuevaSeleccion = selElems.includes(elem.id) ? selElems : [elem.id]
+    }
+
+    setSelInsts([])
+    setSelElems(nuevaSeleccion)
+
+    if (nuevaSeleccion.length === 0) {
+      arrastandoElem.current = null
+      return
+    }
+
+    const posiciones = {}
+    nuevaSeleccion.forEach((id) => {
+      const el = lightPlot.elementos.find((x) => x.id === id)
+      if (el) posiciones[id] = { x1: el.x1, y1: el.y1, x2: el.x2 ?? el.x1, y2: el.y2 ?? el.y1 }
+    })
     arrastandoElem.current = {
-      id: elem.id,
-      ox1: elem.x1, oy1: elem.y1,
-      ox2: elem.x2 ?? elem.x1, oy2: elem.y2 ?? elem.y1,
+      ids: nuevaSeleccion,
+      startPositions: posiciones,
       mx: pos.x, my: pos.y,
       moved: false,
-      esPlantilla: Boolean(elem.esPlantilla),
       snapshotAntes: JSON.parse(JSON.stringify(lightPlot)),
     }
-    setSelInst(null)
-    setSelElem(elem.id)
   }
 
   // ---------------------------------------------------------------------------
@@ -1072,8 +1262,16 @@ export default function LightPlot({ project, onUpdate }) {
     if (e.button !== 0) return
 
     if (herramienta === 'select') {
-      setSelInst(null)
-      setSelElem(null)
+      if (marcoActivo) {
+        // Modo marco activo: empieza a dibujar el rectángulo de selección
+        // en vez de limpiar la selección actual
+        const pos = toCanvas(e.clientX, e.clientY)
+        marcoDragRef.current = { x1: pos.x, y1: pos.y, aditivo: e.shiftKey }
+        setMarcoDibujando({ x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y })
+        return
+      }
+      setSelInsts([])
+      setSelElems([])
       return
     }
 
@@ -1101,42 +1299,47 @@ export default function LightPlot({ project, onUpdate }) {
   // MouseMove — arrastre con umbral, sin guardar historial
   // ---------------------------------------------------------------------------
   const handleMouseMove = useCallback((e) => {
-    // Arrastre de instancia
+    // Marco de selección — actualiza el rectángulo visual mientras se arrastra
+    if (marcoDragRef.current) {
+      const pos = toCanvas(e.clientX, e.clientY)
+      setMarcoDibujando({ x1: marcoDragRef.current.x1, y1: marcoDragRef.current.y1, x2: pos.x, y2: pos.y })
+      return
+    }
+
+    // Arrastre de instancia(s) — traslada todas las seleccionadas como bloque rígido
     if (arrastrando.current) {
       const pos = toCanvas(e.clientX, e.clientY, snapActivo)
-      const nx  = pos.x - arrastrando.current.dx
-      const ny  = pos.y - arrastrando.current.dy
-      const inst = project.lightPlot?.instancias?.find((i) => i.id === arrastrando.current.id)
-      if (inst) {
-        const distancia = Math.sqrt((nx - inst.x)**2 + (ny - inst.y)**2)
-        if (!arrastrando.current.moved && distancia < DRAG_UMBRAL) return
+      const dx  = pos.x - arrastrando.current.startMouse.x
+      const dy  = pos.y - arrastrando.current.startMouse.y
+
+      if (!arrastrando.current.moved) {
+        const distancia = Math.sqrt(dx ** 2 + dy ** 2)
+        if (distancia < DRAG_UMBRAL) return
         arrastrando.current.moved = true
       }
       // Solo actualiza en memoria (onUpdate), no persiste en IndexedDB durante el drag
-      const nuevas = (project.lightPlot?.instancias ?? []).map((i) =>
-        i.id === arrastrando.current.id ? { ...i, x: nx, y: ny } : i
-      )
+      const nuevas = (project.lightPlot?.instancias ?? []).map((i) => {
+        const inicio = arrastrando.current.startPositions[i.id]
+        if (!inicio) return i
+        return { ...i, x: inicio.x + dx, y: inicio.y + dy }
+      })
       onUpdate({ ...project, lightPlot: { ...project.lightPlot, instancias: nuevas } })
       return
     }
 
-    // Arrastre de elemento
+    // Arrastre de elemento(s) — traslada todos los seleccionados como bloque rígido
     if (arrastandoElem.current) {
       const pos = toCanvas(e.clientX, e.clientY, snapActivo)
       const ddx = pos.x - arrastandoElem.current.mx
       const ddy = pos.y - arrastandoElem.current.my
-      const dist = Math.sqrt(ddx**2 + ddy**2)
+      const dist = Math.sqrt(ddx ** 2 + ddy ** 2)
       if (!arrastandoElem.current.moved && dist < DRAG_UMBRAL) return
       arrastandoElem.current.moved = true
-      const nuevos = (project.lightPlot?.elementos ?? []).map((el) =>
-        el.id === arrastandoElem.current.id
-          ? { ...el,
-              x1: arrastandoElem.current.ox1 + ddx,
-              y1: arrastandoElem.current.oy1 + ddy,
-              x2: arrastandoElem.current.ox2 + ddx,
-              y2: arrastandoElem.current.oy2 + ddy }
-          : el
-      )
+      const nuevos = (project.lightPlot?.elementos ?? []).map((el) => {
+        const inicio = arrastandoElem.current.startPositions[el.id]
+        if (!inicio) return el
+        return { ...el, x1: inicio.x1 + ddx, y1: inicio.y1 + ddy, x2: inicio.x2 + ddx, y2: inicio.y2 + ddy }
+      })
       onUpdate({ ...project, lightPlot: { ...project.lightPlot, elementos: nuevos } })
       return
     }
@@ -1145,8 +1348,8 @@ export default function LightPlot({ project, onUpdate }) {
     if (dibujando) {
       const raw = toCanvas(e.clientX, e.clientY)
       const { x2, y2 } = ortogonal(dibujando.x1, dibujando.y1, raw.x, raw.y, shiftActivo)
-      const sx = snapActivo ? snapGrid(x2, SNAP_SIZE) : x2
-      const sy = snapActivo ? snapGrid(y2, SNAP_SIZE) : y2
+      const sx = snapActivo ? snapGrid(x2, gridStep) : x2
+      const sy = snapActivo ? snapGrid(y2, gridStep) : y2
       setDibujando((prev) => ({ ...prev, x2: sx, y2: sy }))
     }
   }, [toCanvas, snapActivo, shiftActivo, dibujando, project, onUpdate])
@@ -1155,6 +1358,27 @@ export default function LightPlot({ project, onUpdate }) {
   // MouseUp — aquí SÍ se guarda el historial (fin del movimiento)
   // ---------------------------------------------------------------------------
   const handleMouseUp = useCallback(async () => {
+    // Cierra el marco de selección y calcula qué elementos quedaron dentro
+    // (instancias de luminaria y elementos estructurales, ambos por su punto
+    // de referencia x1,y1 / x,y)
+    if (marcoDragRef.current) {
+      const { x1, y1, aditivo } = marcoDragRef.current
+      const x2 = marcoDibujando?.x2 ?? x1
+      const y2 = marcoDibujando?.y2 ?? y1
+      const xMin = Math.min(x1, x2), xMax = Math.max(x1, x2)
+      const yMin = Math.min(y1, y2), yMax = Math.max(y1, y2)
+      const idsInstEnMarco = lightPlot.instancias
+        .filter((i) => i.x >= xMin && i.x <= xMax && i.y >= yMin && i.y <= yMax)
+        .map((i) => i.id)
+      const idsElemEnMarco = lightPlot.elementos
+        .filter((el) => el.x1 >= xMin && el.x1 <= xMax && el.y1 >= yMin && el.y1 <= yMax)
+        .map((el) => el.id)
+      setSelInsts((prev) => (aditivo ? [...new Set([...prev, ...idsInstEnMarco])] : idsInstEnMarco))
+      setSelElems((prev) => (aditivo ? [...new Set([...prev, ...idsElemEnMarco])] : idsElemEnMarco))
+      marcoDragRef.current = null
+      setMarcoDibujando(null)
+      return
+    }
     if (arrastrando.current) {
       if (arrastrando.current.moved) {
         // Persiste la posición final Y empuja el historial con el snapshot de antes
@@ -1183,7 +1407,7 @@ export default function LightPlot({ project, onUpdate }) {
       sincronizarFlags()
       setDibujando(null)
     }
-  }, [dibujando, lightPlot, project, persistir, empujarHistorial, sincronizarFlags])
+  }, [dibujando, lightPlot, project, persistir, empujarHistorial, sincronizarFlags, marcoDibujando])
 
   // ---------------------------------------------------------------------------
   // Actualizar / eliminar instancias y elementos
@@ -1197,14 +1421,32 @@ export default function LightPlot({ project, onUpdate }) {
     sincronizarFlags()
   }, [lightPlot, persistir, sincronizarFlags])
 
-  const handleEliminarInstancia = useCallback((id) => {
-    if (!confirm('¿Eliminar del plano? La luminaria volverá a estar disponible.')) return
+  // Aplica los mismos cambios (rotación, escala, símbolo o color) a todas las
+  // instancias actualmente seleccionadas. Usado por el panel multi-selección.
+  const handleActualizarInstanciasBatch = useCallback((cambios) => {
     persistir(
-      { ...lightPlot, instancias: lightPlot.instancias.filter((i) => i.id !== id) },
+      {
+        ...lightPlot,
+        instancias: lightPlot.instancias.map((i) =>
+          selInsts.includes(i.id) ? { ...i, ...cambios } : i
+        ),
+      },
       lightPlot
     )
     sincronizarFlags()
-    setSelInst(null)
+  }, [lightPlot, persistir, sincronizarFlags, selInsts])
+
+  const handleEliminarInstancias = useCallback((ids) => {
+    const mensaje = ids.length > 1
+      ? `¿Eliminar ${ids.length} luminarias del plano? Volverán a estar disponibles.`
+      : '¿Eliminar del plano? La luminaria volverá a estar disponible.'
+    if (!confirm(mensaje)) return
+    persistir(
+      { ...lightPlot, instancias: lightPlot.instancias.filter((i) => !ids.includes(i.id)) },
+      lightPlot
+    )
+    sincronizarFlags()
+    setSelInsts([])
   }, [lightPlot, persistir, sincronizarFlags])
 
   const handleUpdateElemento = useCallback((act) => {
@@ -1215,18 +1457,39 @@ export default function LightPlot({ project, onUpdate }) {
     sincronizarFlags()
   }, [lightPlot, persistir, sincronizarFlags])
 
-  const handleEliminarElemento = useCallback((id) => {
+  // Duplica un elemento estructural (línea, rect, vara, texto) con un
+  // pequeño desplazamiento en Y para evitar que quede exactamente encima
+  // del original. Selecciona la copia resultante.
+  const handleDuplicarElemento = useCallback((elem) => {
+    const copia = {
+      ...structuredClone(elem),
+      id: generateId(),
+      y1: (elem.y1 ?? 0) + OFFSET_DUPLICADO,
+      y2: (elem.y2 ?? elem.y1 ?? 0) + OFFSET_DUPLICADO,
+    }
     persistir(
-      { ...lightPlot, elementos: lightPlot.elementos.filter((e) => e.id !== id) },
+      { ...lightPlot, elementos: [...lightPlot.elementos, copia] },
       lightPlot
     )
     sincronizarFlags()
-    setSelElem(null)
+    setSelInsts([])
+    setSelElems([copia.id])
+  }, [lightPlot, persistir, sincronizarFlags])
+
+  const handleEliminarElementos = useCallback((ids) => {
+    const mensaje = ids.length > 1 ? `¿Eliminar ${ids.length} elementos?` : '¿Eliminar este elemento?'
+    if (!confirm(mensaje)) return
+    persistir(
+      { ...lightPlot, elementos: lightPlot.elementos.filter((e) => !ids.includes(e.id)) },
+      lightPlot
+    )
+    sincronizarFlags()
+    setSelElems([])
   }, [lightPlot, persistir, sincronizarFlags])
 
   const handleEliminarSeleccion = () => {
-    if (selInst) handleEliminarInstancia(selInst)
-    else if (selElem) handleEliminarElemento(selElem)
+    if (selInsts.length > 0) handleEliminarInstancias(selInsts)
+    else if (selElems.length > 0) handleEliminarElementos(selElems)
   }
 
   // ---------------------------------------------------------------------------
@@ -1261,7 +1524,7 @@ export default function LightPlot({ project, onUpdate }) {
   // Render elementos estructurales
   // ---------------------------------------------------------------------------
   const renderElemento = (elem) => {
-    const esSel  = elem.id === selElem
+    const esSel  = selElems.includes(elem.id)
     const color  = esSel ? '#fe6732' : (elem.color || STROKE_STRUCT)
     const grosor = elem.grosor ?? 2
 
@@ -1336,10 +1599,15 @@ export default function LightPlot({ project, onUpdate }) {
   // ---------------------------------------------------------------------------
   // Datos de selección
   // ---------------------------------------------------------------------------
-  const instSel = lightPlot.instancias.find((i) => i.id === selInst)
+  const instSel = selInsts.length === 1
+    ? lightPlot.instancias.find((i) => i.id === selInsts[0])
+    : null
   const lumSel  = instSel ? luminarias.find((l) => l.id === instSel.lumId) : null
-  const elemSel = lightPlot.elementos.find((e) => e.id === selElem)
-  const haySeleccion = Boolean(selInst || selElem)
+  const instanciasSeleccionadas = lightPlot.instancias.filter((i) => selInsts.includes(i.id))
+  const elemSel = selElems.length === 1
+    ? lightPlot.elementos.find((e) => e.id === selElems[0])
+    : null
+  const haySeleccion = selInsts.length > 0 || selElems.length > 0
 
   // ---------------------------------------------------------------------------
   // Bloqueo en dispositivos táctiles/pantallas estrechas — el editor depende
@@ -1398,6 +1666,8 @@ export default function LightPlot({ project, onUpdate }) {
         colorTrazo={colorTrazo} setColorTrazo={setColorTrazo}
         mostrarGrid={mostrarGrid} setMostrarGrid={setMostrarGrid}
         snapActivo={snapActivo} setSnapActivo={setSnapActivo}
+        gridStep={gridStep} setGridStep={setGridStep}
+        marcoActivo={marcoActivo} setMarcoActivo={setMarcoActivo}
         tieneFondo={Boolean(imagenFondoSesion)}
         onImportarFondo={handleImportarFondo}
         onLimpiarFondo={() => setImagenFondoSesion(null)}
@@ -1467,12 +1737,12 @@ export default function LightPlot({ project, onUpdate }) {
               {mostrarGrid && (
                 <>
                   <defs>
-                    <pattern id="grid-minor" width={GRID_SIZE/2} height={GRID_SIZE/2} patternUnits="userSpaceOnUse">
-                      <path d={`M ${GRID_SIZE/2} 0 L 0 0 0 ${GRID_SIZE/2}`} fill="none" stroke="#c8c8c8" strokeWidth="0.5"/>
+                    <pattern id="grid-minor" width={gridStep} height={gridStep} patternUnits="userSpaceOnUse">
+                      <path d={`M ${gridStep} 0 L 0 0 0 ${gridStep}`} fill="none" stroke="#c8c8c8" strokeWidth="0.5"/>
                     </pattern>
-                    <pattern id="grid-major" width={GRID_SIZE} height={GRID_SIZE} patternUnits="userSpaceOnUse">
-                      <rect width={GRID_SIZE} height={GRID_SIZE} fill="url(#grid-minor)"/>
-                      <path d={`M ${GRID_SIZE} 0 L 0 0 0 ${GRID_SIZE}`} fill="none" stroke="#b0b0b0" strokeWidth="1"/>
+                    <pattern id="grid-major" width={gridStep * 2} height={gridStep * 2} patternUnits="userSpaceOnUse">
+                      <rect width={gridStep * 2} height={gridStep * 2} fill="url(#grid-minor)"/>
+                      <path d={`M ${gridStep * 2} 0 L 0 0 0 ${gridStep * 2}`} fill="none" stroke="#b0b0b0" strokeWidth="1"/>
                     </pattern>
                   </defs>
                   <rect width={CANVAS_W} height={CANVAS_H} fill="url(#grid-major)" style={{ pointerEvents: 'none' }} />
@@ -1490,7 +1760,7 @@ export default function LightPlot({ project, onUpdate }) {
                 {lightPlot.instancias.map((inst) => {
                   const lum   = luminarias.find((l) => l.id === inst.lumId)
                   const fill  = lum ? resolverColorLuminaria(lum, lightPlot, inst) : COLOR_DEFAULT
-                  const esSel = inst.id === selInst
+                  const esSel = selInsts.includes(inst.id)
                   const esc   = inst.escala ?? 1
 
                   return (
@@ -1518,6 +1788,18 @@ export default function LightPlot({ project, onUpdate }) {
                   )
                 })}
               </g>
+
+              {/* Rectángulo de selección por marco */}
+              {marcoDibujando && (
+                <rect
+                  x={Math.min(marcoDibujando.x1, marcoDibujando.x2)}
+                  y={Math.min(marcoDibujando.y1, marcoDibujando.y2)}
+                  width={Math.abs(marcoDibujando.x2 - marcoDibujando.x1)}
+                  height={Math.abs(marcoDibujando.y2 - marcoDibujando.y1)}
+                  fill="rgba(254,103,50,0.08)" stroke="#fe6732" strokeWidth="1" strokeDasharray="4,3"
+                  style={{ pointerEvents: 'none' }}
+                />
+              )}
             </svg>
           </div>
 
@@ -1528,24 +1810,37 @@ export default function LightPlot({ project, onUpdate }) {
           </div>
         </div>
 
-        {/* Paneles inspectores — siempre montados cuando hay selección */}
-        {instSel && lumSel && (
+        {/* Paneles inspectores — siempre montados cuando hay selección.
+            Nota: cuando hay 2+ elementos estructurales seleccionados, no se
+            muestra panel — el marco solo permite moverlos juntos. */}
+        {selInsts.length === 1 && instSel && lumSel && (
           <PanelInspectorInstancia
             key={instSel.id}
             instancia={instSel}
             luminaria={lumSel}
             onUpdate={handleUpdateInstancia}
-            onEliminar={() => handleEliminarInstancia(instSel.id)}
-            onCerrar={() => setSelInst(null)}
+            onEliminar={() => handleEliminarInstancias([instSel.id])}
+            onCerrar={() => setSelInsts([])}
           />
         )}
-        {elemSel && !instSel && (
+        {selInsts.length > 1 && (
+          <PanelInspectorMultiple
+            key={selInsts.join(',')}
+            instancias={instanciasSeleccionadas}
+            luminarias={luminarias}
+            onUpdateBatch={handleActualizarInstanciasBatch}
+            onEliminar={() => handleEliminarInstancias(selInsts)}
+            onCerrar={() => setSelInsts([])}
+          />
+        )}
+        {elemSel && selInsts.length === 0 && selElems.length === 1 && (
           <PanelInspectorElemento
             key={elemSel.id}
             elemento={elemSel}
             onUpdate={handleUpdateElemento}
-            onEliminar={() => handleEliminarElemento(elemSel.id)}
-            onCerrar={() => setSelElem(null)}
+            onDuplicar={() => handleDuplicarElemento(elemSel)}
+            onEliminar={() => handleEliminarElementos([elemSel.id])}
+            onCerrar={() => setSelElems([])}
           />
         )}
       </div>

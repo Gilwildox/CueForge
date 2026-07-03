@@ -16,6 +16,7 @@ import {
   resolverColorLuminaria,
   resolverSimbolo,
   COLOR_DEFAULT,
+  SIMBOLO_ANCLA,
 } from '../../utils/lightPlotSymbols.jsx'
 
 // ---------------------------------------------------------------------------
@@ -1050,12 +1051,15 @@ export default function LightPlot({ project, onUpdate }) {
   // ---------------------------------------------------------------------------
   // Coordenadas canvas
   // ---------------------------------------------------------------------------
-  const toCanvas = useCallback((clientX, clientY, conSnap = false) => {
+  const toCanvas = useCallback((clientX, clientY, conSnap = false, anclaY = 0) => {
     const rect = svgRef.current?.getBoundingClientRect()
     if (!rect) return { x: 0, y: 0 }
     let x = (clientX - rect.left) / zoom
     let y = (clientY - rect.top)  / zoom
-    if (conSnap && snapActivo) { x = snapGrid(x, gridStep); y = snapGrid(y, gridStep) }
+    if (conSnap && snapActivo) {
+      x = snapGrid(x, gridStep)
+      y = snapGrid(y + anclaY, gridStep) - anclaY
+    }
     return { x, y }
   }, [zoom, snapActivo, gridStep])
 
@@ -1143,10 +1147,12 @@ export default function LightPlot({ project, onUpdate }) {
     if (!lumId) return
     const lum = luminarias.find((l) => l.id === lumId)
     if (!lum || lightPlot.instancias.some((i) => i.lumId === lum.id)) return
-    const pos   = toCanvas(e.clientX, e.clientY, true)
-    const clave = TIPO_A_SIMBOLO[lum.tipo]
-    if (clave) { colocarInstancia(lum, pos, clave); return }
+    const clave  = TIPO_A_SIMBOLO[lum.tipo]
     const porTipo = resolverDefaultDeTipo(lum)
+    const claveConocida = clave ?? porTipo?.simbolo
+    const anclaY = claveConocida ? (SIMBOLO_ANCLA[claveConocida] ?? 0) : 0
+    const pos = toCanvas(e.clientX, e.clientY, true, anclaY)
+    if (clave) { colocarInstancia(lum, pos, clave); return }
     if (porTipo) { colocarInstancia(lum, pos, porTipo.simbolo, porTipo.color); return }
     setPendienteCustomState({ lum, pos })
   }
@@ -1205,6 +1211,8 @@ export default function LightPlot({ project, onUpdate }) {
     })
     arrastrando.current = {
       ids: nuevaSeleccion,
+      leaderId: inst.id,
+      anclaLeader: (SIMBOLO_ANCLA[inst.simbolo] ?? 0) * (inst.escala ?? 1),
       startMouse: pos,
       startPositions: posiciones,
       moved: false,
@@ -1306,17 +1314,32 @@ export default function LightPlot({ project, onUpdate }) {
       return
     }
 
-    // Arrastre de instancia(s) — traslada todas las seleccionadas como bloque rígido
+    // Arrastre de instancia(s) — traslada todas las seleccionadas como bloque rígido.
+    // El snap se calcula SOLO sobre el centro visual (ancla) de la instancia líder
+    // (la que recibió el mousedown); el delta resultante se aplica igual a todas
+    // las demás del bloque, para no romper la formación al mezclar tipos de símbolo.
     if (arrastrando.current) {
-      const pos = toCanvas(e.clientX, e.clientY, snapActivo)
-      const dx  = pos.x - arrastrando.current.startMouse.x
-      const dy  = pos.y - arrastrando.current.startMouse.y
+      const rawPos = toCanvas(e.clientX, e.clientY, false)
+      const rawDx  = rawPos.x - arrastrando.current.startMouse.x
+      const rawDy  = rawPos.y - arrastrando.current.startMouse.y
 
       if (!arrastrando.current.moved) {
-        const distancia = Math.sqrt(dx ** 2 + dy ** 2)
+        const distancia = Math.sqrt(rawDx ** 2 + rawDy ** 2)
         if (distancia < DRAG_UMBRAL) return
         arrastrando.current.moved = true
       }
+
+      const leaderInicio = arrastrando.current.startPositions[arrastrando.current.leaderId]
+      let dx = rawDx
+      let dy = rawDy
+      if (snapActivo && leaderInicio) {
+        const anclaY = arrastrando.current.anclaLeader ?? 0
+        const snapX  = snapGrid(leaderInicio.x + rawDx, gridStep)
+        const snapY  = snapGrid(leaderInicio.y + rawDy + anclaY, gridStep) - anclaY
+        dx = snapX - leaderInicio.x
+        dy = snapY - leaderInicio.y
+      }
+
       // Solo actualiza en memoria (onUpdate), no persiste en IndexedDB durante el drag
       const nuevas = (project.lightPlot?.instancias ?? []).map((i) => {
         const inicio = arrastrando.current.startPositions[i.id]
@@ -1352,7 +1375,7 @@ export default function LightPlot({ project, onUpdate }) {
       const sy = snapActivo ? snapGrid(y2, gridStep) : y2
       setDibujando((prev) => ({ ...prev, x2: sx, y2: sy }))
     }
-  }, [toCanvas, snapActivo, shiftActivo, dibujando, project, onUpdate])
+  }, [toCanvas, snapActivo, shiftActivo, dibujando, project, onUpdate, gridStep])
 
   // ---------------------------------------------------------------------------
   // MouseUp — aquí SÍ se guarda el historial (fin del movimiento)

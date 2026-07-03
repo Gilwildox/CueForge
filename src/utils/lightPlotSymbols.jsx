@@ -230,6 +230,23 @@ export const SIMBOLOS_MAP = {
   generico:    SimboloGenerico,
 }
 
+// Ancla de snap: desplazamiento Y del centro visual real de cada símbolo
+// respecto a su origen local (0,0). Usado para que el snap alinee el
+// CENTRO VISUAL entre símbolos de distinto tipo, no su origen crudo.
+// Calculado directamente de los min/max Y de cada <path>/<rect>/<ellipse>
+// de los componentes Simbolo* de este mismo archivo.
+export const SIMBOLO_ANCLA = {
+  elipsoidal:  -4,
+  fresnel:     -8,
+  par:          0,
+  moving_spot: -11,
+  moving_wash: -11,
+  panel_led:    0,
+  barra_led:    0,
+  estrobo:      0,
+  generico:     0,
+}
+
 export const SIMBOLO_BBOX = {
   elipsoidal:  { w: 28, h: 58 },
   fresnel:     { w: 30, h: 58 },

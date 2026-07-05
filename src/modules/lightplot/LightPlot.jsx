@@ -176,28 +176,34 @@ function PanelInspectorInstancia({ instancia, luminaria, onUpdate, onEliminar, o
           </div>
         ))}
 
-        {/* Rotación */}
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center justify-between">
-            <label className="text-xs text-gray-500">Rotación</label>
-            <input type="number" min="0" max="359"
+        {/* Rotación — no aplica a robóticas: su orientación se ajusta en vivo, no en el plano */}
+        {form.simbolo === 'moving_spot' || form.simbolo === 'moving_wash' ? (
+          <p className="text-xs text-gray-600 border border-gray-800 rounded px-2 py-1.5">
+            Símbolo fijo — la orientación de esta luminaria se ajusta en vivo, no rota en el plano.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between">
+              <label className="text-xs text-gray-500">Rotación</label>
+              <input type="number" min="0" max="359"
+                value={form.rotacion ?? 0}
+                onChange={(e) => cambiar('rotacion', ((Number(e.target.value) % 360) + 360) % 360)}
+                className="bg-gray-800 text-white rounded px-1 py-0.5 text-xs w-14 text-right focus:outline-none focus:ring-1 focus:ring-amber-500" />
+            </div>
+            <input type="range" min="0" max="359" step="1"
               value={form.rotacion ?? 0}
-              onChange={(e) => cambiar('rotacion', ((Number(e.target.value) % 360) + 360) % 360)}
-              className="bg-gray-800 text-white rounded px-1 py-0.5 text-xs w-14 text-right focus:outline-none focus:ring-1 focus:ring-amber-500" />
+              onChange={(e) => cambiar('rotacion', Number(e.target.value))}
+              className="accent-amber-500" />
+            <div className="flex gap-1 flex-wrap">
+              {[0, 45, 90, 135, 180, 270].map((deg) => (
+                <button key={deg} onClick={() => cambiar('rotacion', deg)}
+                  className="px-1.5 py-0.5 text-xs bg-gray-700 hover:bg-gray-600 rounded text-gray-300 transition-colors">
+                  {deg}°
+                </button>
+              ))}
+            </div>
           </div>
-          <input type="range" min="0" max="359" step="1"
-            value={form.rotacion ?? 0}
-            onChange={(e) => cambiar('rotacion', Number(e.target.value))}
-            className="accent-amber-500" />
-          <div className="flex gap-1 flex-wrap">
-            {[0, 45, 90, 135, 180, 270].map((deg) => (
-              <button key={deg} onClick={() => cambiar('rotacion', deg)}
-                className="px-1.5 py-0.5 text-xs bg-gray-700 hover:bg-gray-600 rounded text-gray-300 transition-colors">
-                {deg}°
-              </button>
-            ))}
-          </div>
-        </div>
+        )}
 
         {/* Escala */}
         <div className="flex flex-col gap-0.5">
@@ -458,6 +464,14 @@ function PanelInspectorMultiple({ instancias, luminarias, onUpdateBatch, onElimi
     (i) => (i.escala ?? 1) === (instancias[0].escala ?? 1)
   ) ? (instancias[0].escala ?? 1) : null
 
+  // Robóticas (spot/wash) no rotan en el plano — su orientación se ajusta
+  // en vivo. Se excluyen del control de rotación y de la aplicación en lote.
+  const rotables = instancias.filter((i) => i.simbolo !== 'moving_spot' && i.simbolo !== 'moving_wash')
+  const hayNoRotables = rotables.length < instancias.length
+  const rotacionComun = rotables.length > 0 && rotables.every(
+    (i) => (i.rotacion ?? 0) === (rotables[0].rotacion ?? 0)
+  ) ? (rotables[0].rotacion ?? 0) : null
+
   return (
     <div className="w-56 bg-gray-900 border-l border-gray-700 flex flex-col overflow-hidden shrink-0">
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700 shrink-0 bg-gray-800">
@@ -473,17 +487,28 @@ function PanelInspectorMultiple({ instancias, luminarias, onUpdateBatch, onElimi
           Solo se muestran los campos que estas luminarias tienen en común.
         </p>
 
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500">Rotación (aplicar a todas)</label>
-          <div className="flex gap-1 flex-wrap">
-            {[0, 45, 90, 135, 180, 270].map((deg) => (
-              <button key={deg} onClick={() => onUpdateBatch({ rotacion: deg })}
-                className="px-1.5 py-0.5 text-xs bg-gray-700 hover:bg-gray-600 rounded text-gray-300 transition-colors">
-                {deg}°
-              </button>
-            ))}
+        {rotables.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500">
+              Rotación {rotacionComun !== null ? `: ${rotacionComun}°` : '(valores distintos)'} (aplicar a todas)
+            </label>
+            <input type="range" min="0" max="359" step="1"
+              defaultValue={rotacionComun ?? 0}
+              onChange={(e) => onUpdateBatch({ rotacion: Number(e.target.value) })}
+              className="accent-amber-500" />
+            <div className="flex gap-1 flex-wrap">
+              {[0, 45, 90, 135, 180, 270].map((deg) => (
+                <button key={deg} onClick={() => onUpdateBatch({ rotacion: deg })}
+                  className="px-1.5 py-0.5 text-xs bg-gray-700 hover:bg-gray-600 rounded text-gray-300 transition-colors">
+                  {deg}°
+                </button>
+              ))}
+            </div>
+            {hayNoRotables && (
+              <p className="text-xs text-gray-600">Las robóticas de esta selección no rotan (símbolo fijo).</p>
+            )}
           </div>
-        </div>
+        )}
 
         <div className="flex flex-col gap-0.5">
           <label className="text-xs text-gray-500">
@@ -715,12 +740,12 @@ function BarraHerramientas({
 
         <div className="w-px h-5 bg-gray-700" />
 
-        {/* Multiselección por marco — modo opt-in, arrastrar sobre el lienzo
-            selecciona varios elementos en vez de limpiar la selección */}
+        {/* Multiselección por marco — un clic activa el modo; se autodesactiva
+            al soltar tras el arrastre de selección (un solo uso por clic) */}
         <button onClick={() => setMarcoActivo((v) => !v)}
-          title="Multiselección: arrastra sobre el lienzo para seleccionar varios elementos"
-          className={`px-2 h-7 rounded transition-colors ${marcoActivo ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>
-          ⬚ Multiselección
+          title="Marco de selección: un clic activa, arrastra sobre el lienzo para seleccionar varios y se desactiva solo"
+          className={`px-1.5 h-7 rounded transition-colors ${marcoActivo ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>
+          ⬚ Marco
         </button>
 
         {/* Shift tip */}
@@ -1209,10 +1234,22 @@ export default function LightPlot({ project, onUpdate }) {
       const i = lightPlot.instancias.find((x) => x.id === id)
       if (i) posiciones[id] = { x: i.x, y: i.y }
     })
+    // Ancla de snap del líder como vector 2D: el centro visual del símbolo
+    // ya no es puramente vertical si la instancia está rotada. Se calcula
+    // con el MISMO ángulo que usa el render (robóticas siempre 0°, nunca
+    // rotan visualmente aunque inst.rotacion tenga un valor guardado).
+    const esRoboticaFija = inst.simbolo === 'moving_spot' || inst.simbolo === 'moving_wash'
+    const anguloRender = esRoboticaFija ? 0 : (inst.rotacion ?? 0)
+    const anguloRad = (anguloRender * Math.PI) / 180
+    const sBase = (SIMBOLO_ANCLA[inst.simbolo] ?? 0) * (inst.escala ?? 1)
+    const anclaLeader = {
+      offsetX: -sBase * Math.sin(anguloRad),
+      offsetY:  sBase * Math.cos(anguloRad),
+    }
     arrastrando.current = {
       ids: nuevaSeleccion,
       leaderId: inst.id,
-      anclaLeader: (SIMBOLO_ANCLA[inst.simbolo] ?? 0) * (inst.escala ?? 1),
+      anclaLeader,
       startMouse: pos,
       startPositions: posiciones,
       moved: false,
@@ -1333,11 +1370,16 @@ export default function LightPlot({ project, onUpdate }) {
       let dx = rawDx
       let dy = rawDy
       if (snapActivo && leaderInicio) {
-        const anclaY = arrastrando.current.anclaLeader ?? 0
-        const snapX  = snapGrid(leaderInicio.x + rawDx, gridStep)
-        const snapY  = snapGrid(leaderInicio.y + rawDy + anclaY, gridStep) - anclaY
-        dx = snapX - leaderInicio.x
-        dy = snapY - leaderInicio.y
+        const { offsetX = 0, offsetY = 0 } = arrastrando.current.anclaLeader ?? {}
+        // Centro visual real del líder = origen + offset (rotado). Se snapea
+        // ese punto (en X y en Y), y el delta resultante se traslada rígido
+        // a todo el bloque.
+        const anchorXraw = leaderInicio.x + offsetX + rawDx
+        const anchorYraw = leaderInicio.y + offsetY + rawDy
+        const snapAX = snapGrid(anchorXraw, gridStep)
+        const snapAY = snapGrid(anchorYraw, gridStep)
+        dx = (snapAX - offsetX) - leaderInicio.x
+        dy = (snapAY - offsetY) - leaderInicio.y
       }
 
       // Solo actualiza en memoria (onUpdate), no persiste en IndexedDB durante el drag
@@ -1400,6 +1442,7 @@ export default function LightPlot({ project, onUpdate }) {
       setSelElems((prev) => (aditivo ? [...new Set([...prev, ...idsElemEnMarco])] : idsElemEnMarco))
       marcoDragRef.current = null
       setMarcoDibujando(null)
+      setMarcoActivo(false)
       return
     }
     if (arrastrando.current) {
@@ -1446,13 +1489,21 @@ export default function LightPlot({ project, onUpdate }) {
 
   // Aplica los mismos cambios (rotación, escala, símbolo o color) a todas las
   // instancias actualmente seleccionadas. Usado por el panel multi-selección.
+  // Excepción: 'rotacion' nunca se aplica a robóticas (spot/wash) — su
+  // orientación se ajusta en vivo, no en el plano.
   const handleActualizarInstanciasBatch = useCallback((cambios) => {
     persistir(
       {
         ...lightPlot,
-        instancias: lightPlot.instancias.map((i) =>
-          selInsts.includes(i.id) ? { ...i, ...cambios } : i
-        ),
+        instancias: lightPlot.instancias.map((i) => {
+          if (!selInsts.includes(i.id)) return i
+          const esRoboticaFija = i.simbolo === 'moving_spot' || i.simbolo === 'moving_wash'
+          if (esRoboticaFija && 'rotacion' in cambios) {
+            const { rotacion, ...resto } = cambios
+            return { ...i, ...resto }
+          }
+          return { ...i, ...cambios }
+        }),
       },
       lightPlot
     )
@@ -1785,10 +1836,14 @@ export default function LightPlot({ project, onUpdate }) {
                   const fill  = lum ? resolverColorLuminaria(lum, lightPlot, inst) : COLOR_DEFAULT
                   const esSel = selInsts.includes(inst.id)
                   const esc   = inst.escala ?? 1
+                  // Robóticas: el símbolo se dibuja fijo, sin importar inst.rotacion —
+                  // su orientación real se ajusta en vivo, no en el plano.
+                  const esRoboticaFija = inst.simbolo === 'moving_spot' || inst.simbolo === 'moving_wash'
+                  const rotacionRender = esRoboticaFija ? 0 : (inst.rotacion ?? 0)
 
                   return (
                     <g key={inst.id}
-                      transform={`translate(${inst.x},${inst.y}) rotate(${inst.rotacion ?? 0})`}
+                      transform={`translate(${inst.x},${inst.y}) rotate(${rotacionRender})`}
                       onMouseDown={(e) => handleInstanciaMouseDown(e, inst)}
                       style={{ cursor: herramienta === 'select' ? 'pointer' : 'default' }}>
 

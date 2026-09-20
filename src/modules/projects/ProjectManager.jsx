@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { getAllProjects, saveProject, deleteProject } from '../../db/database'
 import { createEmptyProject, formatDate, generateId } from '../../utils/helpers'
+import DonationLink from '../../components/DonationLink'
 
 export default function ProjectManager({ onOpenProject }) {
   const [projects, setProjects] = useState([])
@@ -161,18 +162,36 @@ export default function ProjectManager({ onOpenProject }) {
         </div>
       )}
 
-      {/* Crédito — anclado a la esquina inferior izquierda, mismo estilo que el sidebar del proyecto */}
-      <div className="fixed bottom-6 left-8 text-xs text-gray-500">
-        CueForge by{' '}
-        <a
-          href="https://www.instagram.com/gilberto_santacolomba/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-amber-500 hover:text-amber-400 transition-colors"
-        >
-          Gilberto Santacolomba
-        </a>
+      {/* Crédito + donación — anclados a la esquina inferior izquierda */}
+      <div className="fixed bottom-6 left-8 flex flex-col gap-1.5">
+        <DonationLink tooltipWidthClass="w-64" />
+        <div className="text-xs text-gray-500">
+          CueForge by{' '}
+          <a
+            href="https://www.instagram.com/gilberto_santacolomba/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-amber-500 hover:text-amber-400 transition-colors"
+          >
+            Gilberto Santacolomba
+          </a>
+        </div>
       </div>
+
+      {/* Enlace a LightXtool — herramienta hermana, sin relación directa con
+          CueForge, por eso vive en la esquina opuesta con paleta propia
+          (cyan/rojo) en vez del ámbar de marca. */}
+      <a
+        href="https://gilwildox.github.io/lightXtool/"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed bottom-6 right-8 flex flex-col items-end gap-0.5 px-3 py-2 bg-gray-950/80 border border-cyan-700/70 rounded-lg hover:border-cyan-400 transition-colors"
+      >
+        <span className="text-xs font-semibold text-cyan-400 flex items-center gap-1">
+          LightXtool <span className="text-red-500">↗</span>
+        </span>
+        <span className="text-[10px] text-gray-500">herramientas para producción</span>
+      </a>
     </div>
   )
 }

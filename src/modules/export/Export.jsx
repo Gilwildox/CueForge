@@ -1,7 +1,7 @@
 // Módulo 8 — Exportación
 // Módulo central único de reportes. No persiste datos en el proyecto:
 // Venue y fecha de función son campos de captura libre solo para el documento.
-// Modificación: agrega exportación PDF del plano de iluminación.
+// v3: agrega tarjeta de donación al final del listado de reportes.
 import { useState } from 'react'
 import {
   exportarLuminariasPdf,
@@ -12,6 +12,7 @@ import {
 } from '../../utils/exportPdf'
 import { exportarGuionExcel, exportarPresupuestoExcel } from '../../utils/exportExcel'
 import { exportarLightPlotPDF, generarSvgDesdeProject } from '../../utils/exportLightPlotPdf'
+import { DONATION_URL, DONATION_MESSAGE } from '../../components/DonationLink'
 
 // ---------------------------------------------------------------------------
 // TarjetaReporte — fila de acción para un reporte individual
@@ -35,6 +36,26 @@ function TarjetaReporte({ titulo, descripcion, botones }) {
           </button>
         ))}
       </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// TarjetaDonacion — mensaje completo + botón de apoyo, más presente que el
+// enlace discreto de Inicio/sidebar, al fondo de la lista de reportes.
+// ---------------------------------------------------------------------------
+function TarjetaDonacion() {
+  return (
+    <div className="bg-gray-800/50 border border-amber-700/40 rounded-lg p-5 flex flex-col gap-3 mt-2">
+      <p className="text-sm text-gray-300 leading-relaxed">{DONATION_MESSAGE}</p>
+      <a
+        href={DONATION_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="self-start px-5 py-2 text-sm font-semibold bg-amber-500 text-black rounded hover:bg-amber-400 transition-colors"
+      >
+        ☕ Apoya el proyecto
+      </a>
     </div>
   )
 }
@@ -166,6 +187,9 @@ export default function Export({ project }) {
             },
           ]}
         />
+
+        {/* Donación */}
+        <TarjetaDonacion />
 
       </div>
     </div>

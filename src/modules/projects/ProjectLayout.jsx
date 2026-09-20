@@ -1,5 +1,6 @@
 // Layout principal del proyecto — navegación entre módulos
 // v2: sidebar colapsable en móvil (hamburger menu)
+// v3: botón de donación en sidebar, "Presupuesto" reordenado entre "Plano" y "Exportar"
 import { useState } from 'react'
 import ProjectMetadata from './ProjectMetadata'
 import TechnicalSheet from '../technical/TechnicalSheet'
@@ -9,6 +10,7 @@ import Library from '../library/Library'
 import Budget from '../budget/Budget'
 import Export from '../export/Export'
 import LightPlot from '../lightplot/LightPlot'
+import DonationLink from '../../components/DonationLink'
 
 const MODULES = [
   { id: 'metadata',   label: 'Metadatos' },
@@ -16,8 +18,8 @@ const MODULES = [
   { id: 'luminarias', label: 'Luminarias' },
   { id: 'scenes',     label: 'Guion' },
   { id: 'library',    label: 'Biblioteca' },
-  { id: 'budget',     label: 'Presupuesto' },
   { id: 'lightplot',  label: 'Plano' },
+  { id: 'budget',     label: 'Presupuesto' },
   { id: 'export',     label: 'Exportar' },
 ]
 
@@ -104,15 +106,18 @@ export default function ProjectLayout({ project, onBack, onUpdate }) {
           ))}
         </nav>
 
-        <div className="mt-auto pt-6 text-xs text-gray-500 border-t border-gray-800">
-          CueForge by{' '}
-          <a
-            href="https://www.instagram.com/gilberto_santacolomba/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-amber-500 hover:text-amber-400 transition-colors">
-            Gilberto Santacolomba
-          </a>
+        <div className="mt-auto pt-6 flex flex-col gap-2 border-t border-gray-800">
+          <DonationLink tooltipWidthClass="w-48" />
+          <p className="text-xs text-gray-500">
+            CueForge by{' '}
+            <a
+              href="https://www.instagram.com/gilberto_santacolomba/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-amber-500 hover:text-amber-400 transition-colors">
+              Gilberto Santacolomba
+            </a>
+          </p>
         </div>
       </aside>
 

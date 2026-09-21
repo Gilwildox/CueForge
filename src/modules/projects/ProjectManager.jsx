@@ -162,9 +162,11 @@ export default function ProjectManager({ onOpenProject }) {
         </div>
       )}
 
-      {/* Crédito + donación — anclados a la esquina inferior izquierda */}
-      <div className="fixed bottom-6 left-8 flex flex-col gap-1.5">
-        <DonationLink tooltipWidthClass="w-64" />
+      {/* Crédito + donación — anclados a la esquina inferior izquierda.
+          El botón de donación usa tamaño 'lg' aquí: en la pantalla de inicio
+          debe notarse en monitores grandes; el crédito se mantiene discreto. */}
+      <div className="fixed bottom-6 left-8 flex flex-col items-start gap-2">
+        <DonationLink tooltipWidthClass="w-72" size="lg" />
         <div className="text-xs text-gray-500">
           CueForge by{' '}
           <a
@@ -180,17 +182,18 @@ export default function ProjectManager({ onOpenProject }) {
 
       {/* Enlace a LightXtool — herramienta hermana, sin relación directa con
           CueForge, por eso vive en la esquina opuesta con paleta propia
-          (cyan/rojo) en vez del ámbar de marca. */}
+          (cyan/rojo) en vez del ámbar de marca. Agrandado para que también
+          se note en monitores grandes. */}
       <a
         href="https://gilwildox.github.io/lightXtool/"
         target="_blank"
         rel="noopener noreferrer"
-        className="fixed bottom-6 right-8 flex flex-col items-end gap-0.5 px-3 py-2 bg-gray-950/80 border border-cyan-700/70 rounded-lg hover:border-cyan-400 transition-colors"
+        className="fixed bottom-6 right-8 flex flex-col items-end gap-1 px-4 py-2.5 bg-gray-950/80 border border-cyan-700/70 rounded-lg hover:border-cyan-400 transition-colors"
       >
-        <span className="text-xs font-semibold text-cyan-400 flex items-center gap-1">
+        <span className="text-sm font-semibold text-cyan-400 flex items-center gap-1.5">
           LightXtool <span className="text-red-500">↗</span>
         </span>
-        <span className="text-[10px] text-gray-500">herramientas para producción</span>
+        <span className="text-xs text-gray-500">herramientas para producción</span>
       </a>
     </div>
   )

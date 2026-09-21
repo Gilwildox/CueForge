@@ -12,8 +12,14 @@ export const DONATION_MESSAGE =
 // tooltipWidthClass permite ajustar el ancho del globo según el espacio
 // disponible en cada lugar donde se usa (el sidebar es más angosto que la
 // pantalla de inicio).
-export default function DonationLink({ tooltipWidthClass = 'w-56' }) {
+// size: 'sm' (default) — texto discreto, para sidebar del proyecto.
+//       'lg' — botón tipo píldora, más notorio, para la pantalla de inicio.
+export default function DonationLink({ tooltipWidthClass = 'w-56', size = 'sm' }) {
   const [abierto, setAbierto] = useState(false)
+
+  const claseLink = size === 'lg'
+    ? 'text-sm font-semibold text-amber-400 hover:text-amber-300 transition-colors inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full border border-amber-600/50 hover:border-amber-400 bg-amber-500/5 hover:bg-amber-500/10'
+    : 'text-xs font-medium text-amber-400 hover:text-amber-300 transition-colors inline-flex items-center gap-1'
 
   return (
     <div
@@ -25,7 +31,7 @@ export default function DonationLink({ tooltipWidthClass = 'w-56' }) {
         href={DONATION_URL}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-xs font-medium text-amber-400 hover:text-amber-300 transition-colors inline-flex items-center gap-1"
+        className={claseLink}
       >
         ☕ Apoya el proyecto
       </a>

@@ -149,6 +149,61 @@ const construirTextoCambios = (escenas, indice, luminarias, biblioteca) => {
 }
 
 // ---------------------------------------------------------------------------
+// División de filas cuyo texto de "Cambios" excede una página completa.
+// jspdf-autotable no puede partir el contenido de UNA celda entre páginas
+// (limitación conocida de la librería, sin resolver: ver issue #480 de
+// jsPDF-AutoTable). El "mover la fila entera a la siguiente hoja si no cabe
+// en el espacio restante" YA lo hace autoTable solo (rowPageBreak: 'auto',
+// que es el default) — aquí solo cubrimos el caso extremo: una celda más
+// alta que una página completa, dividiéndola en filas "continuación".
+// ---------------------------------------------------------------------------
+const FONT_SIZE_TABLA = 8       // debe coincidir con styles.fontSize de cada reporte
+const LINE_HEIGHT_FACTOR = 1.15 // default de jspdf-autotable
+const CELL_PADDING = 4          // debe coincidir con styles.cellPadding de cada reporte
+
+// Alto aproximado disponible para una fila en una página (margen superior +
+// inferior por defecto ~40pt c/u, más colchón de seguridad para no chocar
+// con el pie de página). Es una estimación conservadora, no un cálculo exacto.
+const altoMaximoFila = (doc) => doc.internal.pageSize.getHeight() - 100
+
+const dividirTextoCambios = (doc, texto, anchoColumna) => {
+  const anchoTexto = anchoColumna - CELL_PADDING * 2
+  const lineas = doc.splitTextToSize(texto, anchoTexto)
+  const alturaLinea = FONT_SIZE_TABLA * LINE_HEIGHT_FACTOR
+  const maxLineasPorFila = Math.max(
+    1,
+    Math.floor((altoMaximoFila(doc) - CELL_PADDING * 2) / alturaLinea)
+  )
+  if (lineas.length <= maxLineasPorFila) return [texto] // cabe en una sola fila
+
+  const bloques = []
+  for (let i = 0; i < lineas.length; i += maxLineasPorFila) {
+    bloques.push(lineas.slice(i, i + maxLineasPorFila).join('\n'))
+  }
+  return bloques
+}
+
+// columnasBase = fila completa ya armada (todas las columnas); idxCambios =
+// posición de la columna "Cambios" dentro de esa fila.
+const construirFilasEscena = (doc, columnasBase, idxCambios, anchoColCambios) => {
+  const bloques = dividirTextoCambios(doc, columnasBase[idxCambios], anchoColCambios)
+  if (bloques.length === 1) return [columnasBase]
+
+  return bloques.map((bloque, i) => {
+    if (i === 0) {
+      const fila = [...columnasBase]
+      fila[idxCambios] = bloque
+      return fila
+    }
+    // Fila de continuación: solo referencia al cue, el resto vacío
+    const fila = columnasBase.map(() => '')
+    fila[0] = `${columnasBase[0]} (cont.)`
+    fila[idxCambios] = bloque
+    return fila
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Reporte: Lista de luminarias
 // ---------------------------------------------------------------------------
 export const exportarLuminariasPdf = (project, infoFuncion = {}) => {
@@ -390,15 +445,25 @@ export const exportarGuionLuzPdf = (project, infoFuncion = {}) => {
   const luminarias = project.luminarias ?? []
   const biblioteca = project.biblioteca ?? { colores: [], posiciones: [] }
 
-  const filas = escenas.map((escena, indice) => [
-    escena.numero,
-    escena.pie || '—',
-    escena.nombre || '—',
-    escena.tiempoEntrada,
-    escena.tiempoSalida,
-    construirTextoCambios(escenas, indice, luminarias, biblioteca),
-    escena.anotaciones || '—',
-  ])
+  // Ancho fijo de la columna "Cambios" — debe coincidir con columnStyles[5]
+  // de abajo. Es necesario fijarlo (no 'auto') para poder calcular con
+  // precisión cuántas líneas de texto le caben antes de dibujar la tabla.
+  const ANCHO_COL_CAMBIOS_LUZ = 150
+
+  const filas = escenas.flatMap((escena, indice) => {
+    const columnasBase = [
+      escena.numero,
+      escena.pie || '—',
+      escena.nombre || '—',
+      escena.tiempoEntrada,
+      escena.tiempoSalida,
+      construirTextoCambios(escenas, indice, luminarias, biblioteca),
+      escena.anotaciones || '—',
+    ]
+    // Si el texto de "Cambios" excede una página completa, se divide en
+    // varias filas ("(cont.)"); en el caso normal regresa la fila tal cual.
+    return construirFilasEscena(doc, columnasBase, 5, ANCHO_COL_CAMBIOS_LUZ)
+  })
 
   autoTable(doc, {
     startY: yInicio,
@@ -412,7 +477,7 @@ export const exportarGuionLuzPdf = (project, infoFuncion = {}) => {
       0: { cellWidth: 35 },
       3: { cellWidth: 28, halign: 'right' },
       4: { cellWidth: 28, halign: 'right' },
-      5: { cellWidth: 150 },
+      5: { cellWidth: ANCHO_COL_CAMBIOS_LUZ },
     },
   })
 
@@ -433,18 +498,26 @@ export const exportarGuionCompletoPdf = (project, infoFuncion = {}) => {
   const luminarias = project.luminarias ?? []
   const biblioteca = project.biblioteca ?? { colores: [], posiciones: [] }
 
-  const filas = escenas.map((escena, indice) => [
-    escena.numero,
-    escena.pie || '—',
-    escena.nombre || '—',
-    escena.tiempoEntrada,
-    escena.tiempoSalida,
-    construirTextoCambios(escenas, indice, luminarias, biblioteca),
-    escena.tramoya || '—',
-    escena.audio || '—',
-    escena.videoEfectos || '—',
-    escena.anotaciones || '—',
-  ])
+  // Ancho fijo de la columna "Cambios" — antes quedaba en 'auto', lo que
+  // impedía calcular con precisión cuántas líneas le caben. Se fija aquí
+  // para poder aplicar la misma división de filas que en exportarGuionLuzPdf.
+  const ANCHO_COL_CAMBIOS_COMPLETO = 140
+
+  const filas = escenas.flatMap((escena, indice) => {
+    const columnasBase = [
+      escena.numero,
+      escena.pie || '—',
+      escena.nombre || '—',
+      escena.tiempoEntrada,
+      escena.tiempoSalida,
+      construirTextoCambios(escenas, indice, luminarias, biblioteca),
+      escena.tramoya || '—',
+      escena.audio || '—',
+      escena.videoEfectos || '—',
+      escena.anotaciones || '—',
+    ]
+    return construirFilasEscena(doc, columnasBase, 5, ANCHO_COL_CAMBIOS_COMPLETO)
+  })
 
   autoTable(doc, {
     startY: yInicio,
@@ -458,6 +531,7 @@ export const exportarGuionCompletoPdf = (project, infoFuncion = {}) => {
       0: { cellWidth: 32 },
       3: { cellWidth: 26, halign: 'right' },
       4: { cellWidth: 26, halign: 'right' },
+      5: { cellWidth: ANCHO_COL_CAMBIOS_COMPLETO },
     },
   })
 
